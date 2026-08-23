@@ -1,6 +1,9 @@
 import React from 'react';
 import { IconPlus } from '../icons/Icons';
 import { ContentRenderer } from '../common/ContentRenderer';
+import { CreatorView } from '../views/CreatorView';
+import { StudentView } from '../views/StudentView';
+import { EducatorView } from '../views/EducatorView';
 
 export function Step8Generated({
   courseData,
@@ -466,179 +469,43 @@ export function Step8Generated({
                     </div>
 
                     <div className="editor-panel" style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none', minHeight: 'auto' }}>
+                      {(() => {
+                        const structLesson = (courseData?.structure || []).find(l => 
+                          (curLesson?.id && l.id === curLesson.id) || 
+                          (curLesson?.title && (l.title === curLesson.title || l.title?.replace(/^Lesson\s*\d+\s*:\s*/i, '') === curLesson.title?.replace(/^Lesson\s*\d+\s*:\s*/i, '')))
+                        ) || (courseData?.structure || [])[0];
 
-                      {/* Creator POV */}
-                      {activeRole === 'creator' && (
-                        <div className="content-section">
-                          <div className="content-block">
-                            <h3>Lesson Overview</h3>
-                            <ContentRenderer text={activeLessonContent.overview} />
-                          </div>
-
-                          <div className="content-block">
-                            <h3>Learning Outcomes</h3>
-                            {activeLessonContent.learning_outcomes?.length > 0 ? (
-                              <ul className="outcome-list">
-                                {activeLessonContent.learning_outcomes.map((item, idx) => (
-                                  <li key={idx}><span className="outcome-dot" />{item}</li>
-                                ))}
-                              </ul>
-                            ) : <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No outcomes available.</p>}
-                          </div>
-
-                          <div className="content-block">
-                            <h3>Core Technical Material</h3>
-                            <ContentRenderer text={activeLessonContent.core_content} />
-                          </div>
-
-                          {/* Static Read Only Exercises */}
-                          {activeLessonContent.exercises?.length > 0 && (
-                            <div className="content-block">
-                              <h3>Hands-On Exercises</h3>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {activeLessonContent.exercises.map((ex, idx) => (
-                                  <div key={idx} style={{ padding: '14px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                                    <strong style={{ color: 'var(--navy)' }}>Exercise {idx + 1}: {ex.title}</strong>
-                                    <p style={{ margin: '6px 0', fontSize: '0.9rem' }}>{ex.description}</p>
-                                    {ex.code_template && <pre className="code-block" style={{ marginTop: '8px' }}>{ex.code_template}</pre>}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Static Read Only Quizzes */}
-                          {activeLessonContent.quizzes?.length > 0 && (
-                            <div className="content-block">
-                              <h3>Assessment Quiz</h3>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                {activeLessonContent.quizzes.map((q, qIdx) => (
-                                  <div key={qIdx} style={{ padding: '14px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                                    <strong style={{ color: 'var(--navy)' }}>Q{qIdx + 1}: {q.question}</strong>
-                                    {q.options?.length > 0 && (
-                                      <ul style={{ listStyle: 'none', paddingLeft: 0, marginTop: '8px' }}>
-                                        {q.options.map((opt, oIdx) => (
-                                          <li key={oIdx} style={{ padding: '4px 0', fontSize: '0.88rem', color: opt === q.answer ? '#059669' : 'var(--text-main)', fontWeight: opt === q.answer ? 700 : 400 }}>
-                                            {opt === q.answer ? '✅ ' : '• '}{opt}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Student POV */}
-                      {activeRole === 'student' && (
-                        <div className="content-section">
-                          <div className="why-matters-card">
-                            <h4>💡 Why This Matters</h4>
-                            <ContentRenderer text={activeLessonContent.why_this_matters} />
-                          </div>
-
-                          {(activeLessonContent.learning_journey || activeLessonContent.journey) && (
-                            <div className="why-matters-card" style={{ borderLeft: '4px solid var(--blue)', marginTop: '14px' }}>
-                              <h4>🧭 Learning Journey</h4>
-                              <ContentRenderer text={activeLessonContent.learning_journey || activeLessonContent.journey} />
-                            </div>
-                          )}
-
-                          <div className="content-block">
-                            <h3>{activeLessonContent.practice?.code_block ? '💻 Interactive Coding Sandbox' : '📋 Hands-on Practice & Application'}</h3>
-                            {activeLessonContent.practice?.content_type === 'markdown' ? (
-                              <ContentRenderer text={activeLessonContent.practice?.code_block || ''} />
-                            ) : (
-                              <pre className="code-block">{activeLessonContent.practice?.code_block || '// No code block available'}</pre>
+                        return (
+                          <>
+                            {/* Creator POV */}
+                            {activeRole === 'creator' && (
+                              <CreatorView
+                                activeLessonContent={activeLessonContent}
+                                sectionOrder={structLesson?.sections?.creator || []}
+                                checkCanEdit={() => false}
+                              />
                             )}
-                            <div className="exercise-task">
-                              <strong>Task:</strong> {activeLessonContent.practice?.interactive_exercise || 'No exercise available.'}
-                            </div>
-                          </div>
 
-                          <div className="content-block">
-                            <h3>Practice Checklist</h3>
-                            {activeLessonContent.practice?.checklist?.length > 0 ? (
-                              <ul className="checklist">
-                                {activeLessonContent.practice.checklist.map((item, idx) => (
-                                  <li key={idx}><span className="check-icon">✓</span>{item}</li>
-                                ))}
-                              </ul>
-                            ) : <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No checklist available.</p>}
-                          </div>
+                            {/* Student POV */}
+                            {activeRole === 'student' && (
+                              <StudentView
+                                activeLessonContent={activeLessonContent}
+                                sectionOrder={structLesson?.sections?.student || []}
+                                checkCanEdit={() => false}
+                              />
+                            )}
 
-                          <div className="content-block">
-                            <h3>⚠️ Common Pitfalls &amp; Troubleshooting</h3>
-                            <ContentRenderer text={activeLessonContent.debugging} />
-                          </div>
-
-                          <div className="content-block">
-                            <h3>⚖️ Professional Ethics &amp; Best Practices</h3>
-                            <ContentRenderer text={activeLessonContent.ethics} />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Educator POV */}
-                      {activeRole === 'educator' && (
-                        <div className="content-section">
-                          <div className="content-block">
-                            <h3>Facilitator Guide</h3>
-                            <ContentRenderer text={activeLessonContent.facilitator_guide} />
-                          </div>
-
-                          <div className="lesson-plan-grid">
-                            <div className="lesson-plan-card">
-                              <h4>🧊 Ice Breaker</h4>
-                              <p style={{ marginTop: '10px' }}>{activeLessonContent.lesson_plan?.ice_breaker || 'No ice breaker available.'}</p>
-                            </div>
-                            <div className="lesson-plan-card">
-                              <h4>⏱ Timing Allocation</h4>
-                              <p style={{ marginTop: '10px' }}>{activeLessonContent.lesson_plan?.timing || 'No timing available.'}</p>
-                            </div>
-                          </div>
-
-                          <div className="content-block">
-                            <h3>Grading Rubric</h3>
-                            {activeLessonContent.rubric?.length > 0 ? (
-                              <table className="rubric-table">
-                                <thead>
-                                  <tr>
-                                    <th>Criteria</th>
-                                    <th>Excellent</th>
-                                    <th>Good</th>
-                                    <th>Needs Improvement</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {activeLessonContent.rubric.map((row, idx) => (
-                                    <tr key={idx}>
-                                      <td>{row.criteria}</td>
-                                      <td style={{ color: 'var(--accent-green)' }}>{row.excellent}</td>
-                                      <td style={{ color: 'var(--accent-orange)' }}>{row.good}</td>
-                                      <td style={{ color: 'var(--accent-red)' }}>{row.needs_improvement}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            ) : <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No rubric available.</p>}
-                          </div>
-
-                          <div className="content-block">
-                            <h3>Discussion Questions</h3>
-                            {activeLessonContent.discussion_questions?.length > 0 ? (
-                              <ol className="discussion-list">
-                                {activeLessonContent.discussion_questions.map((item, idx) => (
-                                  <li key={idx}>{item}</li>
-                                ))}
-                              </ol>
-                            ) : <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No discussion questions available.</p>}
-                          </div>
-                        </div>
-                      )}
+                            {/* Educator POV */}
+                            {activeRole === 'educator' && (
+                              <EducatorView
+                                activeLessonContent={activeLessonContent}
+                                sectionOrder={structLesson?.sections?.educator || []}
+                                checkCanEdit={() => false}
+                              />
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 

@@ -152,6 +152,82 @@ def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
             ]
         }
 
+def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dict) -> list:
+    """Returns list of tuples: (clean_title, content_obj, sec_type) in the exact structure order configured by user."""
+    raw_sections = lesson.get("sections", {}).get(role, {})
+    if not raw_sections:
+        raw_sections = get_resolved_lesson_sections(lesson, role)
+
+    structures = course_data.get("structure", []) or []
+    lesson_id = lesson.get("id")
+    lesson_title = clean_lesson_title(lesson.get("title", ""))
+    
+    matching_struct = next((
+        s for s in structures 
+        if (lesson_id and s.get("id") == lesson_id) or 
+           (s.get("title") and clean_lesson_title(s.get("title")) == lesson_title) or
+           (s.get("order") and s.get("order") == lesson.get("order"))
+    ), None)
+
+    ordered_defs = matching_struct.get("sections", {}).get(role, []) if matching_struct else []
+
+    CANONICAL_LABELS = {
+        "overview": "Lesson Overview",
+        "learning_outcomes": "Learning Outcomes",
+        "outcomes": "Learning Outcomes",
+        "core_content": "Core Technical Material",
+        "exercises": "Hands-On Exercises",
+        "quizzes": "Assessment Quiz",
+        "quiz": "Assessment Quiz",
+        "why_this_matters": "Why This Matters",
+        "why_matters": "Why This Matters",
+        "learning_journey": "Learning Journey",
+        "journey": "Learning Journey",
+        "practice": "Hands-on Practice & Application",
+        "debugging": "Common Pitfalls & Troubleshooting",
+        "ethics": "Professional Ethics & Standards",
+        "facilitator_guide": "Facilitator Guide",
+        "facilitator": "Facilitator Guide",
+        "lesson_plan": "Lesson Plan & Timing",
+        "engagement": "Lesson Plan & Timing",
+        "rubric": "Assessment Rubric",
+        "rubrics": "Assessment Rubric",
+        "teaching_tips": "Teaching Tips",
+        "discussion_questions": "Discussion Questions",
+        "discussion": "Discussion Questions",
+        "assessment": "Assessment & Homework"
+    }
+
+    result = []
+    used_keys = set()
+
+    if ordered_defs:
+        for s_def in ordered_defs:
+            s_type = s_def.get("type")
+            s_title = s_def.get("title") or CANONICAL_LABELS.get(s_type) or s_type.replace("custom_", "").replace("_", " ").title()
+            
+            # Find matching content in raw_sections
+            content = raw_sections.get(s_type)
+            matched_key = s_type
+            if content is None:
+                for k, v in raw_sections.items():
+                    if k.lower() == s_type.lower() or k == s_def.get("id"):
+                        content = v
+                        matched_key = k
+                        break
+            
+            if content is not None:
+                used_keys.add(matched_key)
+                result.append((s_title, content, s_type))
+
+    # Add any remaining sections from raw_sections not explicitly in structure
+    for k, v in raw_sections.items():
+        if k not in used_keys:
+            clean_title = CANONICAL_LABELS.get(k) or k.replace("custom_", "").replace("_", " ").title()
+            result.append((clean_title, v, k))
+
+    return result
+
 def export_to_markdown(course_data: dict, role: str) -> str:
     md = []
     md.append(f"# 🎓 {course_data.get('title', 'Untitled Course')}")
@@ -172,13 +248,16 @@ def export_to_markdown(course_data: dict, role: str) -> str:
             l_num = lesson.get('order') or (idx + 1)
             clean_t = clean_lesson_title(lesson.get('title', 'Untitled Lesson'))
             md.append(f"### Lesson {l_num}: {clean_t}")
-            sections = get_resolved_lesson_sections(lesson, r)
             
-            for sec_type, content in sections.items():
-                title = sec_type.replace("_", " ").capitalize()
+            ordered_secs = get_ordered_sections_with_metadata(lesson, r, course_data)
+            for title, content, sec_type in ordered_secs:
                 md.append(f"#### {title}")
-                formatted_lines = format_section_content_to_md(content)
-                md.extend(formatted_lines)
+                if isinstance(content, str):
+                    clean_c = re.sub(r'^#{1,6}\s*' + re.escape(title) + r'\s*\n*', '', content, flags=re.IGNORECASE).strip()
+                    md.append(clean_c)
+                else:
+                    formatted_lines = format_section_content_to_md(content)
+                    md.extend(formatted_lines)
                 md.append("")
         md.append("---\n")
     return "\n".join(md)
@@ -430,12 +509,12 @@ def _render_rubric_table(rubric: list) -> str:
     )
 
 
-def _render_section(section_type: str, content) -> str:
-    """Renders one lesson section (by its known type) into dark-theme HTML."""
-    label = section_type.replace("_", " ").title()
+def _render_section(section_type: str, content, custom_title: str = None) -> str:
+    """Renders one lesson section into styled HTML with custom title and clean typography."""
+    label = custom_title or section_type.replace("custom_", "").replace("_", " ").title()
     out = [f"<div class='md-h3' style='font-size:15px;margin-top:20px;'>{html_lib.escape(label)}</div>"]
 
-    if section_type == "learning_outcomes" and isinstance(content, list):
+    if section_type in ("learning_outcomes", "outcomes") and isinstance(content, list):
         items = "".join(
             f"<div class='check-item'><div class='tick'>&#10003;</div>{html_lib.escape(str(c))}</div>"
             for c in content
@@ -443,11 +522,11 @@ def _render_section(section_type: str, content) -> str:
         out.append(f"<div class='check-list'>{items}</div>")
     elif section_type == "exercises" and isinstance(content, list):
         out.extend(_render_exercise_card(item) if isinstance(item, dict) else f"<div class='card'><div class='card-desc'>{html_lib.escape(str(item))}</div></div>" for item in content)
-    elif section_type == "quizzes" and isinstance(content, list):
+    elif section_type in ("quizzes", "quiz") and isinstance(content, list):
         out.extend(_render_quiz_card(item) if isinstance(item, dict) else "" for item in content)
-    elif section_type == "rubric" and isinstance(content, list):
+    elif section_type in ("rubric", "rubrics") and isinstance(content, list):
         out.append(_render_rubric_table(content))
-    elif section_type == "discussion_questions" and isinstance(content, list):
+    elif section_type in ("discussion_questions", "discussion") and isinstance(content, list):
         items = "".join(f"<li>{html_lib.escape(str(c))}</li>" for c in content)
         out.append(f"<ul class='md-ul'>{items}</ul>")
     elif section_type == "practice" and isinstance(content, dict):
@@ -463,11 +542,14 @@ def _render_section(section_type: str, content) -> str:
                 for c in checklist
             )
             out.append(f"<div class='check-list'>{items}</div>")
-    elif section_type == "lesson_plan" and isinstance(content, dict):
+    elif section_type in ("lesson_plan", "engagement") and isinstance(content, dict):
         for k, v in content.items():
             out.append(f"<p class='md-p'><b>{html_lib.escape(k.replace('_',' ').title())}:</b> {html_lib.escape(str(v))}</p>")
     elif isinstance(content, str):
-        out.append(_md_block_to_html(content))
+        clean_text = content
+        if custom_title:
+            clean_text = re.sub(r'^#{1,6}\s*' + re.escape(custom_title) + r'\s*\n*', '', clean_text, flags=re.IGNORECASE).strip()
+        out.append(_md_block_to_html(clean_text))
     elif isinstance(content, list):
         items = "".join(f"<li>{html_lib.escape(str(c)) if not isinstance(c, dict) else html_lib.escape(json.dumps(c))}</li>" for c in content)
         out.append(f"<ul class='md-ul'>{items}</ul>")
@@ -555,13 +637,13 @@ def export_to_html_v2(course_data: dict, role: str) -> str:
         </div>
         """)
         for r in roles_to_export:
-            sections = get_resolved_lesson_sections(lesson, r)
-            if not sections:
+            ordered_secs = get_ordered_sections_with_metadata(lesson, r, course_data)
+            if not ordered_secs:
                 continue
             if len(roles_to_export) > 1:
                 content_html.append(f"<div class='role-tag'>{html_lib.escape(get_role_label(r))}</div>")
-            for sec_type, content in sections.items():
-                content_html.append(_render_section(sec_type, content))
+            for title_text, content, sec_type in ordered_secs:
+                content_html.append(_render_section(sec_type, content, title_text))
 
     content_html.append("</div>")
     content_html.append(f"<div class='doc-footer'>Maxy Academy &middot; Curricula AI &middot; {html_lib.escape(get_role_label(role))}</div>")

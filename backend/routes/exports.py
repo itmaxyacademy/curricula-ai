@@ -94,6 +94,7 @@ def export_course(
             "difficulty": db_session.config_difficulty,
             "target_audience": db_session.config_audience,
         },
+        "structure": json.loads(db_session.structure) if (db_session and db_session.structure) else [],
         "lessons": lessons_data
     }
 
