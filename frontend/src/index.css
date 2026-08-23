@@ -2991,6 +2991,21 @@ html {
   border-radius: var(--radius-lg);
   padding: 20px;
   box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  z-index: 10;
+  transition: box-shadow 0.2s ease;
+}
+
+.assets-checklist-sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.assets-checklist-sidebar::-webkit-scrollbar-thumb {
+  background: var(--surface-3, #cbd5e1);
+  border-radius: 4px;
 }
 
 .assets-menu-group {
