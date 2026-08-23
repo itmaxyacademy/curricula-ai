@@ -1021,180 +1021,333 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
 
     # 3. ReportLab Multi-page Document Builder
     if SimpleDocTemplate:
+        from reportlab.platypus import Table, TableStyle, PageBreak, KeepTogether, HRFlowable
         out3 = io.BytesIO()
         doc = SimpleDocTemplate(
             out3, 
             pagesize=letter,
             leftMargin=36,
             rightMargin=36,
-            topMargin=40,
-            bottomMargin=40
+            topMargin=36,
+            bottomMargin=36
         )
         styles = getSampleStyleSheet()
         story = []
+        DOC_W = 540  # Printable width (612 - 72)
         
-        title_style = ParagraphStyle(
-            'DocTitle',
-            parent=styles['Title'],
+        # Typography styles
+        course_title_style = ParagraphStyle(
+            'CourseTitleStyle',
             fontName='Helvetica-Bold',
-            fontSize=18,
-            leading=24,
-            alignment=0,
-            textColor=colors.HexColor('#FFFFFF'),
-            backColor=colors.HexColor('#1A2040'),
-            borderColor=colors.HexColor('#E9B259'),
-            borderWidth=0,
-            borderPadding=(16, 16, 16, 16),
-            borderRadius=8,
-            spaceAfter=14
+            fontSize=20,
+            leading=25,
+            textColor=colors.HexColor('#0F172A'),
+            spaceAfter=6
         )
-        h1_style = ParagraphStyle(
-            'Heading1Custom',
-            parent=styles['Heading1'],
-            fontName='Helvetica-Bold',
-            fontSize=14,
-            leading=17,
-            alignment=0,
-            textColor=colors.HexColor('#2D3561'),
-            backColor=colors.HexColor('#FFF8EC'),
-            borderPadding=(8, 8, 10, 10),
-            borderRadius=5,
-            spaceBefore=16,
-            spaceAfter=10,
-            keepWithNext=True
-        )
-        h2_style = ParagraphStyle(
-            'Heading2Custom',
-            parent=styles['Heading2'],
-            fontName='Helvetica-Bold',
-            fontSize=11.5,
+        course_sub_style = ParagraphStyle(
+            'CourseSubStyle',
+            fontName='Helvetica',
+            fontSize=10,
             leading=14,
-            alignment=0,
-            textColor=colors.HexColor('#FFFFFF'),
-            backColor=colors.HexColor('#C8913A'),
-            borderPadding=(5, 5, 8, 8),
-            borderRadius=4,
-            spaceBefore=12,
-            spaceAfter=7,
-            keepWithNext=True
+            textColor=colors.HexColor('#64748B')
         )
-        h3_style = ParagraphStyle(
-            'Heading3Custom',
-            parent=styles['Heading3'],
+        lesson_h1_style = ParagraphStyle(
+            'LessonH1Style',
             fontName='Helvetica-Bold',
-            fontSize=10.5,
-            leading=13,
-            textColor=colors.HexColor('#334155'),
-            spaceBefore=8,
-            spaceAfter=4,
-            keepWithNext=True
+            fontSize=13,
+            leading=17,
+            textColor=colors.HexColor('#FFFFFF')
         )
-        body_style = ParagraphStyle(
-            'BodyCustom',
-            parent=styles['Normal'],
+        lesson_pill_style = ParagraphStyle(
+            'LessonPillStyle',
+            fontName='Helvetica-Bold',
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor('#F59E0B')
+        )
+        body_p_style = ParagraphStyle(
+            'BodyPStyle',
+            fontName='Helvetica',
+            fontSize=9.5,
+            leading=14,
+            textColor=colors.HexColor('#334155'),
+            spaceAfter=5
+        )
+        bullet_item_style = ParagraphStyle(
+            'BulletItemStyle',
             fontName='Helvetica',
             fontSize=9.5,
             leading=13.5,
             textColor=colors.HexColor('#334155'),
-            spaceAfter=5
-        )
-        bullet_style_1 = ParagraphStyle(
-            'Bullet1',
-            parent=body_style,
-            leftIndent=15,
+            leftIndent=12,
             firstLineIndent=-10,
             spaceAfter=3
         )
-        bullet_style_2 = ParagraphStyle(
-            'Bullet2',
-            parent=body_style,
-            leftIndent=30,
-            firstLineIndent=-10,
-            spaceAfter=2
-        )
-        code_style = ParagraphStyle(
-            'CodeBlockStyle',
-            parent=body_style,
+        code_text_style = ParagraphStyle(
+            'CodeTextStyle',
             fontName='Courier',
             fontSize=8.5,
-            leading=11,
-            textColor=colors.HexColor('#E2E8F0'),
-            backColor=colors.HexColor('#1E293B'),
-            borderPadding=8,
+            leading=11.5,
+            textColor=colors.HexColor('#38BDF8')
+        )
+        card_subhead_style = ParagraphStyle(
+            'CardSubhead',
+            fontName='Helvetica-Bold',
+            fontSize=10,
+            leading=13,
+            textColor=colors.HexColor('#1E293B'),
             spaceBefore=6,
-            spaceAfter=6
+            spaceAfter=3
         )
 
-        txt = export_to_markdown(course_data, role)
-        
-        # Clean emojis for ReportLab standard Helvetica font
-        txt = re.sub(r'[\U00010000-\U0010ffff]', '', txt)
-        txt = re.sub(r'[\u2600-\u27BF]', '', txt)
+        def clean_rl_text(text: str) -> str:
+            if not text:
+                return ""
+            t = re.sub(r'[\U00010000-\U0010ffff]', '', str(text))
+            t = re.sub(r'[\u2600-\u27BF]', '', t)
+            return t
 
-        in_code = False
-        code_lines = []
+        def build_card_box(title: str, elements: list, bg_hex: str, border_hex: str, title_color_hex: str, icon_str: str = "") -> Table:
+            header_p = Paragraph(f"<b>{icon_str} {clean_rl_text(title)}</b>", ParagraphStyle(
+                'CardH2',
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                leading=14,
+                textColor=colors.HexColor(title_color_hex),
+                spaceAfter=6
+            ))
+            cell_flowables = [header_p] + elements
+            t = Table([[cell_flowables]], colWidths=[DOC_W])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(bg_hex)),
+                ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor(border_hex)),
+                ('LINEBEFORE', (0, 0), (0, -1), 4.0, colors.HexColor(border_hex)),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('LEFTPADDING', (0, 0), (-1, -1), 14),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 14),
+            ]))
+            return t
 
-        for raw_line in txt.split('\n'):
-            line_str = raw_line.rstrip()
-            line_clean = line_str.strip()
+        def parse_markdown_to_elements(md_text: str) -> list:
+            if not md_text:
+                return []
+            clean_str = clean_rl_text(str(md_text))
+            elems = []
+            in_c = False
+            c_lines = []
 
-            if line_clean.startswith('```'):
-                if not in_code:
-                    in_code = True
-                    code_lines = []
+            for line_raw in clean_str.split('\n'):
+                line_str = line_raw.rstrip()
+                line_clean = line_str.strip()
+
+                if line_clean.startswith('```'):
+                    if not in_c:
+                        in_c = True
+                        c_lines = []
+                    else:
+                        in_c = False
+                        code_esc = html_lib.escape("\n".join(c_lines))
+                        code_p = Paragraph(code_esc.replace("\n", "<br/>").replace(" ", "&nbsp;"), code_text_style)
+                        c_box = Table([[code_p]], colWidths=[DOC_W - 32])
+                        c_box.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#0F172A')),
+                            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#1E293B')),
+                            ('TOPPADDING', (0, 0), (-1, -1), 8),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                        ]))
+                        elems.append(c_box)
+                        elems.append(Spacer(1, 4))
+                    continue
+
+                if in_c:
+                    c_lines.append(line_raw)
+                    continue
+
+                if not line_clean:
+                    continue
+
+                if line_clean.startswith('### '):
+                    elems.append(Paragraph(f"<b>{md_to_reportlab_html(line_clean[4:])}</b>", card_subhead_style))
+                elif line_clean.startswith('#### '):
+                    elems.append(Paragraph(f"<b>{md_to_reportlab_html(line_clean[5:])}</b>", card_subhead_style))
+                elif line_clean.startswith('- ') or line_clean.startswith('* '):
+                    elems.append(Paragraph(f"&bull;&nbsp;{md_to_reportlab_html(line_clean[2:].strip())}", bullet_item_style))
+                elif line_clean.startswith('1. ') or line_clean.startswith('2. ') or line_clean.startswith('3. '):
+                    elems.append(Paragraph(f"<b>{line_clean[:3]}</b>{md_to_reportlab_html(line_clean[3:].strip())}", bullet_item_style))
                 else:
-                    in_code = False
-                    code_text = html_lib.escape("\n".join(code_lines))
-                    story.append(Paragraph(code_text.replace("\n", "<br/>").replace(" ", "&nbsp;"), code_style))
-                continue
+                    elems.append(Paragraph(md_to_reportlab_html(line_clean), body_p_style))
+            return elems
 
-            if in_code:
-                code_lines.append(raw_line)
-                continue
+        # ── 1. Top Course Header Banner ──────────────────────────
+        doc_title = clean_rl_text(course_data.get('title', 'Course Curriculum'))
+        cfg = course_data.get("config", {})
+        diff = cfg.get("difficulty", "Beginner")
+        aud = cfg.get("target_audience", "Student")
+        role_label = get_role_label(role)
 
-            if not line_clean:
-                story.append(Spacer(1, 4))
-                continue
+        header_cell = [
+            Paragraph(f"<font color='#F59E0B'><b>CURRICULA AI</b></font> &nbsp;|&nbsp; <font color='#94A3B8'>MAXY ACADEMY &nbsp;&bull;&nbsp; {html_lib.escape(role_label.upper())}</font>", course_sub_style),
+            Spacer(1, 4),
+            Paragraph(html_lib.escape(doc_title), course_title_style),
+            Spacer(1, 4),
+            Paragraph(f"<b>Difficulty:</b> {html_lib.escape(str(diff))} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Audience:</b> {html_lib.escape(str(aud))} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Format:</b> {html_lib.escape(role_label)}", course_sub_style)
+        ]
+        banner_table = Table([[header_cell]], colWidths=[DOC_W])
+        banner_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
+            ('LINEBEFORE', (0, 0), (0, -1), 4.5, colors.HexColor('#2563EB')),
+            ('TOPPADDING', (0, 0), (-1, -1), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
+            ('LEFTPADDING', (0, 0), (-1, -1), 16),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 16),
+        ]))
+        story.append(banner_table)
+        story.append(Spacer(1, 16))
 
-            if line_clean.startswith('# '):
-                story.append(Paragraph(md_to_reportlab_html(line_clean[2:]), title_style))
-            elif line_clean.startswith('## '):
-                story.append(Paragraph(md_to_reportlab_html(line_clean[3:]), h1_style))
-            elif line_clean.startswith('### '):
-                story.append(Paragraph(md_to_reportlab_html(line_clean[4:]), h2_style))
-            elif line_clean.startswith('#### '):
-                story.append(Paragraph(md_to_reportlab_html(line_clean[5:]), h3_style))
-            elif line_clean == '---':
-                try:
-                    from reportlab.platypus import HRFlowable
-                    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceBefore=8, spaceAfter=8))
-                except Exception:
-                    story.append(Spacer(1, 8))
-            elif line_str.startswith('    - ') or line_str.startswith('\t- '):
-                item_text = line_clean[2:].strip()
-                story.append(Paragraph(f"&bull;&nbsp;{md_to_reportlab_html(item_text)}", bullet_style_2))
-            elif line_str.startswith('  - '):
-                item_text = line_clean[2:].strip()
-                story.append(Paragraph(f"&bull;&nbsp;{md_to_reportlab_html(item_text)}", bullet_style_1))
-            elif line_clean.startswith('- ') or line_clean.startswith('* '):
-                item_text = line_clean[2:].strip()
-                story.append(Paragraph(f"&bull;&nbsp;{md_to_reportlab_html(item_text)}", bullet_style_1))
-            else:
-                story.append(Paragraph(md_to_reportlab_html(line_clean), body_style))
+        # ── 2. Lessons & Ordered Sections ────────────────────────
+        lessons = course_data.get("lessons", []) or course_data.get("structure") or [{"title": doc_title}]
+        roles_to_export = ["creator", "student", "educator"] if role == "all" else [role]
+
+        for r_item in roles_to_export:
+            if len(roles_to_export) > 1:
+                story.append(Paragraph(f"<b>{get_role_label(r_item).upper()}</b>", course_title_style))
+                story.append(Spacer(1, 8))
+
+            for l_idx, lesson in enumerate(lessons):
+                l_num = lesson.get('order') or (l_idx + 1)
+                l_title = clean_rl_text(clean_lesson_title(lesson.get('title', f'Lesson {l_num}')))
+
+                # Lesson H1 Banner Box
+                l_banner_cell = [
+                    Paragraph(f"LESSON {l_num:02d}", lesson_pill_style),
+                    Spacer(1, 2),
+                    Paragraph(f"<b>{html_lib.escape(l_title)}</b>", lesson_h1_style)
+                ]
+                l_table = Table([[l_banner_cell]], colWidths=[DOC_W])
+                l_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#1E293B')),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#0F172A')),
+                    ('LINEBEFORE', (0, 0), (0, -1), 4.5, colors.HexColor('#F59E0B')),
+                    ('TOPPADDING', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 14),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 14),
+                ]))
+                story.append(l_table)
+                story.append(Spacer(1, 10))
+
+                ordered_secs = get_ordered_sections_with_metadata(lesson, r_item, course_data)
+                for s_title, content, sec_type in ordered_secs:
+                    card_elems = []
+                    # Theme determination
+                    if sec_type in ("why_this_matters", "why_matters"):
+                        bg_c, border_c, t_c, icon = '#EFF6FF', '#3B82F6', '#1D4ED8', '💡'
+                    elif sec_type in ("learning_journey", "journey"):
+                        bg_c, border_c, t_c, icon = '#F0FDFA', '#0D9488', '#0F766E', '🧭'
+                    elif sec_type in ("learning_outcomes", "outcomes"):
+                        bg_c, border_c, t_c, icon = '#F8FAFC', '#0284C7', '#0369A1', '🎯'
+                    elif sec_type in ("practice", "exercises"):
+                        bg_c, border_c, t_c, icon = '#F8FAFC', '#6366F1', '#4338CA', '📋'
+                    elif sec_type in ("debugging",):
+                        bg_c, border_c, t_c, icon = '#FFFBEB', '#F59E0B', '#B45309', '⚠️'
+                    elif sec_type in ("ethics",):
+                        bg_c, border_c, t_c, icon = '#F0FDF4', '#10B981', '#047857', '⚖️'
+                    elif sec_type in ("facilitator_guide", "facilitator"):
+                        bg_c, border_c, t_c, icon = '#FAF5FF', '#8B5CF6', '#6D28D9', '🏫'
+                    elif sec_type in ("lesson_plan", "engagement"):
+                        bg_c, border_c, t_c, icon = '#F8FAFC', '#64748B', '#334155', '⏱'
+                    else:
+                        bg_c, border_c, t_c, icon = '#F0FDFA', '#0D9488', '#0F766E', '📌'
+
+                    # Content rendering inside card
+                    if isinstance(content, list):
+                        if sec_type in ("learning_outcomes", "outcomes"):
+                            for item in content:
+                                card_elems.append(Paragraph(f"<font color='#16A34A'><b>[&#10003;]</b></font>&nbsp;&nbsp;{md_to_reportlab_html(clean_rl_text(str(item)))}", bullet_item_style))
+                        elif sec_type == "exercises":
+                            for e_idx, ex in enumerate(content):
+                                if isinstance(ex, dict):
+                                    card_elems.append(Paragraph(f"<b>Exercise {e_idx + 1}: {clean_rl_text(ex.get('title', 'Task'))}</b>", card_subhead_style))
+                                    if ex.get('description'):
+                                        card_elems.append(Paragraph(md_to_reportlab_html(clean_rl_text(ex['description'])), body_p_style))
+                                    if ex.get('code_template'):
+                                        card_elems.extend(parse_markdown_to_elements(f"```\n{ex['code_template']}\n```"))
+                                else:
+                                    card_elems.append(Paragraph(md_to_reportlab_html(clean_rl_text(str(ex))), body_p_style))
+                        elif sec_type in ("quizzes", "quiz"):
+                            for q_idx, q in enumerate(content):
+                                if isinstance(q, dict):
+                                    card_elems.append(Paragraph(f"<b>Q{q_idx + 1}: {clean_rl_text(q.get('question', 'Question'))}</b>", card_subhead_style))
+                                    for opt in q.get('options', []):
+                                        is_ans = opt == q.get('answer')
+                                        icon_opt = "<font color='#16A34A'><b>[&#10003;]</b></font>" if is_ans else "[ &nbsp; ]"
+                                        card_elems.append(Paragraph(f"{icon_opt}&nbsp;&nbsp;{clean_rl_text(str(opt))}", bullet_item_style))
+                        elif sec_type in ("rubric", "rubrics"):
+                            r_rows = [[
+                                Paragraph("<b>Criteria</b>", ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor('#FFFFFF'))),
+                                Paragraph("<b>Excellent</b>", ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor('#FFFFFF'))),
+                                Paragraph("<b>Good</b>", ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor('#FFFFFF'))),
+                                Paragraph("<b>Needs Imp.</b>", ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor('#FFFFFF')))
+                            ]]
+                            for r_item_row in content:
+                                if isinstance(r_item_row, dict):
+                                    r_rows.append([
+                                        Paragraph(clean_rl_text(r_item_row.get('criteria', '')), body_p_style),
+                                        Paragraph(clean_rl_text(r_item_row.get('excellent', '')), body_p_style),
+                                        Paragraph(clean_rl_text(r_item_row.get('good', '')), body_p_style),
+                                        Paragraph(clean_rl_text(r_item_row.get('needs_improvement', '')), body_p_style),
+                                    ])
+                            r_table = Table(r_rows, colWidths=[(DOC_W - 32) * 0.28, (DOC_W - 32) * 0.24, (DOC_W - 32) * 0.24, (DOC_W - 32) * 0.24])
+                            r_table.setStyle(TableStyle([
+                                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
+                                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+                                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                            ]))
+                            card_elems.append(r_table)
+                        else:
+                            for item in content:
+                                card_elems.append(Paragraph(f"&bull;&nbsp;{md_to_reportlab_html(clean_rl_text(str(item)))}", bullet_item_style))
+                    elif isinstance(content, dict):
+                        if sec_type == "practice":
+                            if content.get("interactive_exercise"):
+                                card_elems.append(Paragraph(f"<b>Interactive Task:</b> {md_to_reportlab_html(clean_rl_text(content['interactive_exercise']))}", body_p_style))
+                            if content.get("code_block"):
+                                card_elems.extend(parse_markdown_to_elements(f"```\n{content['code_block']}\n```"))
+                            if content.get("checklist"):
+                                for chk in content["checklist"]:
+                                    card_elems.append(Paragraph(f"<font color='#16A34A'><b>[&#10003;]</b></font>&nbsp;&nbsp;{md_to_reportlab_html(clean_rl_text(str(chk)))}", bullet_item_style))
+                        else:
+                            for k, v in content.items():
+                                card_elems.append(Paragraph(f"<b>{clean_rl_text(k.replace('_', ' ').title())}:</b> {md_to_reportlab_html(clean_rl_text(str(v)))}", body_p_style))
+                    else:
+                        # String markdown content
+                        card_elems.extend(parse_markdown_to_elements(str(content)))
+
+                    if card_elems:
+                        card_box = build_card_box(s_title, card_elems, bg_c, border_c, t_c, icon)
+                        story.append(card_box)
+                        story.append(Spacer(1, 12))
+
+                story.append(Spacer(1, 8))
 
         def _draw_page_decor(canvas_obj, doc_obj):
             try:
                 canvas_obj.saveState()
                 width, height = letter
-                # Thin accent bar across the top of every page
-                canvas_obj.setFillColor(colors.HexColor('#E9B259'))
-                canvas_obj.rect(0, height - 6, width, 6, fill=1, stroke=0)
+                # Thin accent top bar
+                canvas_obj.setFillColor(colors.HexColor('#2563EB'))
+                canvas_obj.rect(0, height - 5, width, 5, fill=1, stroke=0)
                 # Footer: page number + brand
                 canvas_obj.setFont('Helvetica', 8)
                 canvas_obj.setFillColor(colors.HexColor('#94A3B8'))
-                canvas_obj.drawCentredString(width / 2.0, 24, f"Page {doc_obj.page}")
-                canvas_obj.drawString(36, 24, "Curricula AI")
-                canvas_obj.drawRightString(width - 36, 24, "Maxy Academy")
+                canvas_obj.drawCentredString(width / 2.0, 20, f"Page {doc_obj.page}")
+                canvas_obj.drawString(36, 20, "Curricula AI &bull; Interactive Course Generator")
+                canvas_obj.drawRightString(width - 36, 20, "Maxy Academy")
                 canvas_obj.restoreState()
             except Exception:
                 pass

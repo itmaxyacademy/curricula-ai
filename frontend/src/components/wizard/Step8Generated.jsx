@@ -340,12 +340,19 @@ export function Step8Generated({
                   })()}
                 </div>
                 {currentPptxSlide && currentPptxSlide.notes && (
-                  <div style={{ background: 'var(--surface-2)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                      <span style={{ fontSize: '1rem' }}>📝</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy)' }}>Speaker Notes</span>
+                  <div style={{ background: 'var(--surface-2)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-color)', borderLeft: '4px solid var(--blue)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '1.1rem' }}>🎙️</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--navy)' }}>Educator Narration Script &amp; Speaker Notes</span>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--blue)' }}>
+                        Full Spoken Script
+                      </span>
                     </div>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{currentPptxSlide.notes}</p>
+                    <p style={{ color: 'var(--navy-deep, #1e293b)', fontSize: '0.92rem', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
+                      {currentPptxSlide.notes}
+                    </p>
                   </div>
                 )}
                 </div>

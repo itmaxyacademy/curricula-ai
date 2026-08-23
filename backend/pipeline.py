@@ -1287,17 +1287,31 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
         creator = sections.get("creator", {})
         student = sections.get("student", {})
         educator = sections.get("educator", {})
+        
+        # Capture all custom and standard sections
+        all_sections_dict = {}
+        for role_key in ["creator", "student", "educator"]:
+            role_secs = sections.get(role_key, {})
+            if isinstance(role_secs, dict):
+                for k, v in role_secs.items():
+                    if k not in all_sections_dict:
+                        all_sections_dict[k] = v
+
         lessons_summary.append({
             "title": lesson.get("title", "Untitled Lesson"),
             "overview": creator.get("overview", ""),
             "learning_outcomes": creator.get("learning_outcomes", []),
-            "core_content": creator.get("core_content", "")[:4000],
-            "exercises": creator.get("exercises", []),
-            "quiz": creator.get("quiz", []),
+            "core_content": str(creator.get("core_content", ""))[:4000],
+            "why_this_matters": student.get("why_this_matters", ""),
+            "learning_journey": student.get("learning_journey", "") or student.get("journey", ""),
             "practice": student.get("practice", {}),
             "debugging": student.get("debugging", ""),
-            "facilitator_guide": educator.get("facilitator_guide", "")[:2000],
-            "lesson_plan": educator.get("lesson_plan", {})
+            "ethics": student.get("ethics", ""),
+            "exercises": creator.get("exercises", []),
+            "quiz": creator.get("quiz", []) or creator.get("quizzes", []),
+            "facilitator_guide": str(educator.get("facilitator_guide", ""))[:2000],
+            "lesson_plan": educator.get("lesson_plan", {}),
+            "all_sections": {k: (str(v)[:1500] if isinstance(v, str) else v) for k, v in all_sections_dict.items()}
         })
 
     colors_hint = ""
@@ -1306,62 +1320,57 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
 
     prompt = f"""
     [ROLE]
-    You are a Senior Instructional Designer and Presentation Expert creating a professional, comprehensive course slide deck.
+    You are a Master Educator, Keynote Speaker, and Instructional Designer creating a world-class, highly engaging presentation slide deck with comprehensive educator narration scripts.
 
     [TASK]
-    Create a complete, high-quality slide deck for the course "{course_data.get('title', 'Untitled Course')}".
+    Create a complete, high-impact, professional slide deck for the course "{course_data.get('title', 'Untitled Course')}".
     Difficulty: {course_data.get('config', {}).get('difficulty', 'Beginner')}
     Audience: {course_data.get('config', {}).get('target_audience', 'Student')}
     Number of Lessons: {len(lessons_summary)}
     {colors_hint}
 
     Generate 3 different layout versions simultaneously: "layout_1", "layout_2", and "layout_3".
-    Each layout must have the SAME slide content but COMPLETELY DIFFERENT visual themes and decorative elements.
+    Each layout must have the SAME rich slide content and speaker notes, but visually distinct styling.
 
     [SLIDE STRUCTURE]
-    Generate as many slides as needed for comprehensive coverage. Do NOT limit slides — quality and completeness matter more than brevity.
+    Generate a thorough, complete slide deck covering all lesson topics and custom sections:
 
     1. TITLE SLIDE (first slide):
-       - title: Course title only
-       - subtitle: "" (empty — no subtitle)
-       - notes: Welcome greeting and course introduction script
+       - title: Course title
+       - subtitle: ""
+       - notes: Comprehensive welcome script introducing the course objectives, scope, and enthusiastic greeting.
 
     2. TABLE OF CONTENTS SLIDE:
        - Numbered list of all lessons
-       - notes: Brief overview of what will be covered
+       - notes: Narrative overview walking through the learning roadmap and how each module builds upon the previous.
 
-3. FOR EACH LESSON, generate these slides:
-        a. LESSON TITLE slide — lesson number and title
-        b. OVERVIEW slide — 4 key takeaway bullets from the lesson overview
-        c. LEARNING OUTCOMES slide — bullet list of specific, measurable outcomes
-        d. CORE CONTENT slides — extract ALL key concepts from core_content markdown:
-           - Split into multiple slides if content is rich (max 4 bullets per slide)
-           - Each bullet should be a clear, concise explanation (not just a keyword)
-           - Include sub-concepts and practical implications
-        e. CODE EXAMPLE slide(s) — extract code snippets from core_content or exercises:
-           - Include actual working code with comments
-           - Add language label
-           - Limit to ~12 lines of code
-        f. PRACTICE/EXERCISE slide — from student practice data:
-           - Exercise title, description, and starter code if available
-        g. KEY TAKEAWAYS slide — 3-5 summary bullets for the lesson
+    3. FOR EACH LESSON, generate comprehensive slides covering all aspects:
+       a. LESSON TITLE slide — lesson number and clean title with introductory notes
+       b. OVERVIEW & WHY IT MATTERS slide — key motivations and real-world significance
+       c. LEARNING OUTCOMES slide — specific, actionable capabilities students will acquire
+       d. CORE CONCEPTS & CUSTOM TOPICS slides — thorough breakdown of core material and custom sub-topics:
+          - Extract all important concepts, theories, and steps
+          - Split across multiple slides for clarity (3-5 informative bullet points per slide)
+          - Each bullet must be an informative explanation with clear context
+       e. CODE EXAMPLE / PRACTICAL APPLICATION slide(s) — real code or step-by-step application walkthrough
+       f. COMMON PITFALLS & TROUBLESHOOTING slide — practical advice on what to avoid and best practices
+       g. ETHICS & STANDARDS / KEY TAKEAWAYS slide — professional standards and summary
 
     4. END SLIDE:
-       - title: "Thank You"
+       - title: "Thank You / Terima Kasih"
        - subtitle: course title
-       - notes: Closing remarks and call to action
+       - notes: Inspiring concluding speech, Q&A invite, and call to action.
 
-    [CONTENT QUALITY REQUIREMENTS]
-    - Bullets must be informative sentences, NOT single keywords
-    - Each content slide should teach something specific
-    - Speaker notes must be detailed speaking scripts (2-4 sentences per slide), not just "This slide covers..."
-    - Use the actual lesson data provided — do not make up generic content
-    - Extract real concepts, real code, real exercises from the lesson data
-    - If core_content has code examples, include them in code slides
-    - If exercises exist, create practice slides from them
+    [SPEAKER NOTES & NARRATION REQUIREMENTS - CRITICAL]
+    - Every single slide MUST contain a complete, thorough, educator speaking script in the "notes" field (4 to 8 sentences).
+    - The narration script must sound like an expert instructor speaking directly to students: explaining the core 'why' and 'how', giving practical analogies, emphasizing key nuances, and asking reflective questions.
+    - Do NOT write placeholder notes like "This slide covers X". Write the actual spoken words of the lecture.
+
+    [LANGUAGE REQUIREMENT]
+    - Automatically match the language of the provided course content and lesson titles. If the course is in Indonesian, write all slide titles, bullets, and speaker notes in Indonesian. If in English, write in English.
 
     [LESSON DATA]
-    {json.dumps(lessons_summary, ensure_ascii=False)[:12000]}
+    {json.dumps(lessons_summary, ensure_ascii=False)[:14000]}
 
     [FORMAT]
     Return a pure JSON object with exactly this structure:
@@ -1370,27 +1379,24 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
         "layout_1": {{
           "theme": {{"primary": "#1a202c", "secondary": "#ffffff", "accent": "#d69e2e", "text": "#ffffff"}},
           "slides": [
-            {{"type": "title", "title": "Course Title", "subtitle": "", "notes": "..."}},
+            {{"type": "title", "title": "Course Title", "subtitle": "", "notes": "Full educator speech script..."}},
             {{"type": "toc", "title": "Table of Contents", "items": ["1. Lesson Title", "2. Lesson Title"], "notes": "..."}},
             {{"type": "lesson_title", "title": "Lesson 1: ...", "subtitle": "", "notes": "..."}},
-            {{"type": "content", "title": "...", "bullets": ["Clear explanation of concept...", "..."], "notes": "..."}},
-            {{"type": "code", "title": "...", "code": "# Actual code here", "language": "python", "notes": "..."}},
+            {{"type": "content", "title": "...", "bullets": ["Comprehensive explanation...", "..."], "notes": "Full speaking narration..."}},
+            {{"type": "code", "title": "...", "code": "// code here", "language": "python", "notes": "..."}},
             {{"type": "end", "title": "Thank You", "subtitle": "...", "notes": "..."}}
           ]
         }},
         "layout_2": {{
-          "theme": {{"primary": "#1a202c", "secondary": "#ffffff", "accent": "#3182ce", "text": "#ffffff"}},
-          "slides": [...same structure, same content, different visual theme...]
+          "theme": {{"primary": "#0f172a", "secondary": "#ffffff", "accent": "#0284c7", "text": "#ffffff"}},
+          "slides": [...same slides, same content and notes...]
         }},
         "layout_3": {{
-          "theme": {{"primary": "#ffffff", "secondary": "#1a202c", "accent": "#319795", "text": "#1a202c"}},
-          "slides": [...same structure, same content, different visual theme...]
+          "theme": {{"primary": "#ffffff", "secondary": "#1e293b", "accent": "#0d9488", "text": "#1e293b"}},
+          "slides": [...same slides, same content and notes...]
         }}
       }}
     }}
-
-    [CONSTRAINTS]
-    - IMPORTANT: Write all slide content and speaker notes in English.
     - Every slide MUST have a "notes" field with detailed speaker notes (2-4 sentences).
     - All 3 layouts must have the SAME number of slides and SAME content.
     - Slide types: "title", "toc", "lesson_title", "content", "code", "end"
