@@ -428,7 +428,14 @@ export function CreatorView({
         const rawContent = activeLessonContent[sec.type];
         const secContent = (rawContent && typeof rawContent === 'string' && !rawContent.includes('is not generated yet'))
           ? rawContent
-          : (typeof rawContent === 'object' ? rawContent : `### ${sec.title}\nThis section provides comprehensive guidelines, architectural principles, and practical strategies for **${sec.title}**. Learners will explore core concepts, industry use-cases, and implementation patterns necessary for real-world application.`);
+          : (typeof rawContent === 'object' ? rawContent : `This section provides comprehensive guidelines, architectural principles, and practical strategies for **${sec.title}**. Learners will explore core concepts, industry use-cases, and implementation patterns necessary for real-world application.`);
+        
+        let cleanContent = secContent;
+        if (typeof cleanContent === 'string') {
+          const escapedTitle = sec.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          cleanContent = cleanContent.replace(new RegExp(`^#{1,6}\\s*${escapedTitle}\\s*\\n*`, 'i'), '').trim();
+        }
+
         const isEditing = editingSection === sec.type;
         const domId = sec.type === 'outcomes' ? 'learning_outcomes' : sec.type === 'quiz' ? 'quizzes' : sec.type;
 
@@ -442,7 +449,7 @@ export function CreatorView({
                   <button className="ai-pill-btn" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }} onClick={() => setEditingSection(null)}>Cancel</button>
                 </div>
               ) : (
-                <button className="ai-pill-btn edit" onClick={() => { setEditingSection(sec.type); setEditingText(typeof secContent === 'string' ? secContent : JSON.stringify(secContent, null, 2)); }}>Edit</button>
+                <button className="ai-pill-btn edit" onClick={() => { setEditingSection(sec.type); setEditingText(typeof cleanContent === 'string' ? cleanContent : JSON.stringify(cleanContent, null, 2)); }}>Edit</button>
               )}
             </div>
             {isEditing ? (
@@ -453,9 +460,9 @@ export function CreatorView({
                 onChange={(e) => setEditingText(e.target.value)} 
               />
             ) : (
-              <ContentRenderer text={typeof secContent === 'string' ? secContent : JSON.stringify(secContent, null, 2)} />
+              <ContentRenderer text={cleanContent} />
             )}
-            {renderAIActionBar && renderAIActionBar(sec.type, secContent)}
+            {renderAIActionBar && renderAIActionBar(sec.type, cleanContent)}
           </div>
         );
       })}

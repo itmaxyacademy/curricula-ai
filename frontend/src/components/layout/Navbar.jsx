@@ -9,15 +9,10 @@ export function Navbar({
   showUserDropdown,
   setShowUserDropdown,
   setShowMyCourses,
-  setSessionId,
-  setPromptText,
-  setProposals,
-  setStructure,
-  setCourseData,
-  setUploadedFileName,
-  setPendingFile,
-  setSubjectContext,
+  sessionId,
+  currentStep,
   setCurrentStep,
+  API_BASE,
   fetchSessions,
   resetWizardState,
   toast
@@ -53,7 +48,14 @@ export function Navbar({
         </button>
         <button 
           className={`header-tab-btn ${currentView === 'courses' ? 'active' : ''}`}
-          onClick={() => requireAuth('courses', () => { setCurrentView('courses'); setShowMyCourses(true); fetchSessions(); })}
+          onClick={() => requireAuth('courses', () => { 
+            if (currentStep === 'generating' && sessionId && API_BASE) {
+              fetch(`${API_BASE}/courses/sessions/${sessionId}/pause`, { method: 'POST' }).catch(() => {});
+            }
+            setCurrentView('courses'); 
+            setShowMyCourses(true); 
+            if (fetchSessions) fetchSessions(); 
+          })}
         >
           Courses
         </button>

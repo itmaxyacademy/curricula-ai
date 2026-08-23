@@ -133,13 +133,13 @@ export function Step2ContextConfig({
             {(() => {
               let numVal = 60;
               if (typeof configDuration === 'number' && !isNaN(configDuration)) {
-                numVal = configDuration;
+                numVal = configDuration > 240 ? 60 : configDuration;
               } else if (typeof configDuration === 'string') {
-                if (configDuration.includes('week') || configDuration.includes('day')) {
+                if (configDuration.includes('week') || configDuration.includes('day') || configDuration.includes('month')) {
                   numVal = 60;
                 } else {
                   const parsed = parseInt(configDuration, 10);
-                  numVal = !isNaN(parsed) && parsed > 0 ? parsed : 60;
+                  numVal = !isNaN(parsed) && parsed > 0 ? (parsed > 240 ? 60 : parsed) : 60;
                 }
               }
               const isWeekScope = typeof configDuration === 'string' && (configDuration.includes('week') || configDuration.includes('day'));

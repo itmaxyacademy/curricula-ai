@@ -87,7 +87,6 @@
 
 .page-transition {
   animation: pageSlideIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform, opacity;
 }
 
 .section-visible {

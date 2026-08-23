@@ -98,9 +98,20 @@ export function Step4Proposals({
           );
         })}
       </div>
-      
-      <div style={{ marginTop: '30px' }}>
-        <button className="file-upload-btn" onClick={() => setCurrentStep('grounding')}>← Back</button>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '30px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+        <button className="file-upload-btn" onClick={() => setCurrentStep('grounding')}>← Back to Grounding</button>
+        <button 
+          className="action-btn"
+          disabled={!selectedProposalId || isLoading}
+          onClick={() => {
+            if (selectedProposalId) {
+              handleSelectProposal(selectedProposalId);
+            }
+          }}
+        >
+          {isLoading ? <><IconSpinner /> Loading Structure…</> : <>Continue to Structure →</>}
+        </button>
       </div>
     </div>
   );

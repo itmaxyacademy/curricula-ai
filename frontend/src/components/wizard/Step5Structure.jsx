@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { IconLayers, IconTrash, IconSpinner, IconArrow } from '../icons/Icons';
 
 export function Step5Structure({
@@ -35,6 +35,8 @@ export function Step5Structure({
   setIsLoading,
   toast
 }) {
+  const [isEnhancingSection, setIsEnhancingSection] = useState(false);
+
   return (
     <div>
       <div className="header">
@@ -386,11 +388,17 @@ export function Step5Structure({
             if (sessionId) {
               setIsLoading(true);
               try {
-                await fetch(`${API_BASE}/courses/sessions/${sessionId}/structure/save`, {
+                const res = await fetch(`${API_BASE}/courses/sessions/${sessionId}/structure/save`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ lessons: structure })
                 });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.structure) {
+                    setStructure(data.structure);
+                  }
+                }
               } catch (e) {
                 if (toast) toast.error('Failed to save structure');
               } finally {
@@ -468,17 +476,43 @@ export function Step5Structure({
             <div className="add-section-modal-footer">
               <button
                 className="modal-add-btn"
-                onClick={() => {
+                disabled={isEnhancingSection}
+                onClick={async () => {
                   if (!newSectionTitle.trim()) {
                     if (toast) toast.warning('Please enter a section title.');
                     return;
                   }
-                  const cleanType = `custom_${newSectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '')}_${Date.now().toString().slice(-4)}`;
+                  setIsEnhancingSection(true);
+                  let finalTitle = newSectionTitle.trim();
+                  let finalInstruction = newSectionInstruction.trim();
+
+                  try {
+                    const res = await fetch(`${API_BASE}/courses/sections/ai-enhance`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        title: finalTitle,
+                        instruction: finalInstruction,
+                        session_id: sessionId
+                      })
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.title) finalTitle = data.title;
+                      if (data.instruction) finalInstruction = data.instruction;
+                    }
+                  } catch (e) {
+                    console.warn('AI enhancement fallback:', e);
+                  } finally {
+                    setIsEnhancingSection(false);
+                  }
+
+                  const cleanType = `custom_${finalTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '')}_${Date.now().toString().slice(-4)}`;
                   const newSec = {
                     id: `custom-${Date.now()}`,
                     type: cleanType,
-                    title: newSectionTitle.trim(),
-                    instruction: newSectionInstruction.trim() || 'Write curriculum content.',
+                    title: finalTitle,
+                    instruction: finalInstruction || 'Explore foundational concepts, best practices, and practical workflows.',
                     locked: false
                   };
                   const updated = structure.map((lesson) => {
@@ -493,10 +527,10 @@ export function Step5Structure({
                   setIsAddSectionModalOpen(false);
                   setNewSectionTitle('');
                   setNewSectionInstruction('');
-                  if (toast) toast.success('Custom section added!');
+                  if (toast) toast.success('AI-enhanced custom section added!');
                 }}
               >
-                Add Section →
+                {isEnhancingSection ? <><IconSpinner /> Enhancing with AI...</> : 'Add Section →'}
               </button>
             </div>
           </div>

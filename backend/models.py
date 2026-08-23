@@ -62,6 +62,8 @@ class Session(Base):
     status = Column(String(30), default="idle")
     progress = Column(Integer, default=0)
     status_text = Column(Text, default="")
+    created_at = Column(String(32), nullable=True)
+    all_suggested_tags = Column(Text, default="[]")
 
 
 class History(Base):

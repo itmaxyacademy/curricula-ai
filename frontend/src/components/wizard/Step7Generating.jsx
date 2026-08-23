@@ -44,68 +44,105 @@ export function Step7Generating({
   const [isCanceling, setIsCanceling] = useState(false);
 
   const handleConfirmCancel = () => {
-    setIsCanceling(true);
-    fetch(`${API_BASE}/courses/sessions/${sessionId}/cancel`, { method: 'POST' }).catch((e) => {
-      console.error("Cancel API call error:", e);
-    });
+    setShowCancelModal(false);
+    setGenerationProgress(0);
+    setCurrentStep('review');
+    if (toast) toast.info("Generation canceled. Returned to Step 6 Review.");
 
-    setTimeout(() => {
-      setIsCanceling(false);
-      setShowCancelModal(false);
-      setGenerationProgress(0);
-      setCurrentStep('review');
-      if (toast) toast.info("Generation canceled. Returned to Step 6 Review.");
-    }, 150);
+    // Fire non-blocking cancel request to backend
+    fetch(`${API_BASE}/courses/sessions/${sessionId}/cancel`, { method: 'POST' })
+      .catch(e => console.warn("Async cancel notice:", e))
+      .finally(() => setIsCanceling(false));
   };
 
   // ── Scroll Spy ──────────────────────────────────────────────────────────────
   const observerRef = useRef(null);
 
+  const scrollCleanupRef = useRef(null);
+
   const setupScrollSpy = useCallback((secIds) => {
-    if (observerRef.current) observerRef.current.disconnect();
+    if (scrollCleanupRef.current) {
+      scrollCleanupRef.current();
+      scrollCleanupRef.current = null;
+    }
 
-    // Wait one frame so React has painted the new DOM nodes
-    requestAnimationFrame(() => {
-      const elements = secIds
-        .map(id => document.getElementById(`step7-sec-${id}`))
-        .filter(Boolean);
+    if (!secIds || secIds.length === 0) return;
 
-      if (elements.length === 0) return;
+    let ticking = false;
 
-      observerRef.current = new IntersectionObserver(
-        (entries) => {
-          // Find all sections whose TOP edge is in the upper 40% of viewport
-          const visible = entries
-            .filter(e => e.isIntersecting)
-            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-          if (visible.length > 0) {
-            setActiveSubSection(visible[0].target.id.replace('step7-sec-', ''));
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const HEADER_OFFSET = 140;
+          const elements = secIds
+            .map(id => ({ id, el: document.getElementById(`step7-sec-${id}`) }))
+            .filter(item => Boolean(item.el));
+
+          if (elements.length > 0) {
+            let activeId = elements[0].id;
+            for (let i = 0; i < elements.length; i++) {
+              const rect = elements[i].el.getBoundingClientRect();
+              if (rect.top <= HEADER_OFFSET) {
+                activeId = elements[i].id;
+              } else {
+                break;
+              }
+            }
+            setActiveSubSection(activeId);
           }
-        },
-        {
-          root: null,
-          // Section is "active" when its top crosses the 0–30% band of the viewport
-          rootMargin: '-5% 0px -65% 0px',
-          threshold: 0
-        }
-      );
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
 
-      elements.forEach(el => observerRef.current.observe(el));
-    });
+    // Run initial positioning check after DOM paint
+    const timer = setTimeout(onScroll, 120);
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    scrollCleanupRef.current = () => {
+      clearTimeout(timer);
+      window.removeEventListener('scroll', onScroll);
+    };
   }, [setActiveSubSection]);
 
-  // Re-attach spy whenever role or lesson changes
+  // Re-attach spy whenever role, lesson or structure changes
   useEffect(() => {
-    // Build secIds from the currently rendered sections
-    const baseIds = activeRole === 'creator'
-      ? ['overview', 'learning_outcomes', 'core_content', 'exercises', 'quizzes']
-      : activeRole === 'student'
-      ? ['why_this_matters', 'practice', 'debugging', 'ethics']
-      : activeRole === 'educator'
-      ? ['facilitator_guide', 'lesson_plan', 'rubric', 'teaching_tips', 'discussion_questions', 'assessment']
-      : [];
-    setupScrollSpy(baseIds);
-    return () => { if (observerRef.current) observerRef.current.disconnect(); };
+    // Build secIds dynamically from the currently rendered sections (including custom sections)
+    const structLesson = (structure || [])[currentGeneratingLessonIdx];
+    const roleSecs = structLesson?.sections?.[activeRole] || [];
+    let secIds;
+    if (roleSecs.length > 0) {
+      secIds = roleSecs.map(s => {
+        return s.type === 'outcomes' || s.type === 'learning_outcomes' ? 'learning_outcomes' :
+               s.type === 'quiz' || s.type === 'quizzes' ? 'quizzes' :
+               s.type === 'why_matters' || s.type === 'why_this_matters' ? 'why_this_matters' :
+               s.type === 'journey' || s.type === 'learning_journey' ? 'journey' :
+               s.type === 'facilitator' || s.type === 'facilitator_guide' ? 'facilitator_guide' :
+               s.type === 'engagement' || s.type === 'lesson_plan' ? 'lesson_plan' :
+               s.type === 'discussion' || s.type === 'discussion_questions' ? 'discussion_questions' :
+               s.type === 'practice' ? 'practice' :
+               s.type === 'debugging' ? 'debugging' :
+               s.type === 'ethics' ? 'ethics' :
+               s.type === 'assessment' ? 'assessment' :
+               (s.type || s.id);
+      });
+    } else {
+      secIds = activeRole === 'creator'
+        ? ['overview', 'learning_outcomes', 'core_content', 'exercises', 'quizzes']
+        : activeRole === 'student'
+        ? ['why_this_matters', 'journey', 'practice', 'debugging', 'ethics']
+        : activeRole === 'educator'
+        ? ['facilitator_guide', 'lesson_plan', 'rubric', 'teaching_tips', 'discussion_questions', 'assessment']
+        : [];
+    }
+    setupScrollSpy(secIds);
+    return () => { 
+      if (scrollCleanupRef.current) {
+        scrollCleanupRef.current();
+        scrollCleanupRef.current = null;
+      }
+    };
   }, [activeRole, currentGeneratingLessonIdx, setupScrollSpy]);
 
   // Keep activeLessonId strictly synchronized with currently selected structure lesson for Edit/Save/AI Actions
@@ -277,7 +314,7 @@ export function Step7Generating({
       </div>
 
       {/* Main Content Workspace Box */}
-      <div style={{ background: 'var(--white)', border: '1.5px solid var(--border-color)', borderRadius: 'var(--radius-xl)', padding: '24px', boxShadow: 'var(--shadow-sm)' }}>
+      <div id="step7-main-workspace" style={{ background: 'var(--white)', border: '1.5px solid var(--border-color)', borderRadius: 'var(--radius-xl)', padding: '24px', boxShadow: 'var(--shadow-sm)', scrollMarginTop: '80px' }}>
         {/* Lesson Carousel Navigator Slider */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', background: 'var(--surface-2)', padding: '16px 24px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
           <button 
@@ -360,9 +397,9 @@ export function Step7Generating({
                 quiz: 'Assessment Quiz', quizzes: 'Assessment Quiz',
                 why_matters: 'Why This Matters', why_this_matters: 'Why This Matters',
                 journey: 'Learning Journey',
-                practice: 'Interactive Coding Practice',
-                debugging: 'Debugging Pitfalls',
-                ethics: 'Ethics & Code Principles',
+                practice: 'Hands-on Practice & Application',
+                debugging: 'Common Pitfalls & Troubleshooting',
+                ethics: 'Professional Ethics & Standards',
                 facilitator: 'Facilitator Guide', facilitator_guide: 'Facilitator Guide',
                 engagement: 'Engagement Strategies',
                 rubric: 'Assessment Rubric',
@@ -376,7 +413,7 @@ export function Step7Generating({
                 outcomes: 'learning_outcomes',
                 quiz: 'quizzes',
                 why_matters: 'why_this_matters',
-                journey: 'why_this_matters', // rendered inside why block
+                journey: 'journey',
                 facilitator: 'facilitator_guide',
                 engagement: 'lesson_plan',
                 discussion: 'discussion_questions',
@@ -386,7 +423,17 @@ export function Step7Generating({
               if (structSections.length > 0) {
                 // Use structure order; locked sections are built-ins, unlocked are custom
                 secList = structSections.map(s => {
-                  const domId = s.type === 'outcomes' ? 'learning_outcomes' : s.type === 'quiz' ? 'quizzes' : s.type === 'why_matters' ? 'why_this_matters' : s.type === 'facilitator' ? 'facilitator_guide' : s.type === 'discussion' ? 'discussion_questions' : s.type;
+                  const domId = s.type === 'outcomes' || s.type === 'learning_outcomes' ? 'learning_outcomes' :
+                                s.type === 'quiz' || s.type === 'quizzes' ? 'quizzes' :
+                                s.type === 'why_matters' || s.type === 'why_this_matters' ? 'why_this_matters' :
+                                s.type === 'journey' || s.type === 'learning_journey' ? 'journey' :
+                                s.type === 'facilitator' || s.type === 'facilitator_guide' ? 'facilitator_guide' :
+                                s.type === 'engagement' || s.type === 'lesson_plan' ? 'lesson_plan' :
+                                s.type === 'discussion' || s.type === 'discussion_questions' ? 'discussion_questions' :
+                                s.type === 'practice' ? 'practice' :
+                                s.type === 'debugging' ? 'debugging' :
+                                s.type === 'ethics' ? 'ethics' :
+                                (s.type || s.id);
                   const label = LABEL_MAP[s.type] || s.title || s.type;
                   return { id: domId, title: label };
                 });
@@ -400,9 +447,10 @@ export function Step7Generating({
                   { id: 'quizzes', title: 'Assessment Quiz' }
                 ] : activeRole === 'student' ? [
                   { id: 'why_this_matters', title: 'Why This Matters' },
-                  { id: 'practice', title: 'Interactive Coding Practice' },
-                  { id: 'debugging', title: 'Debugging Pitfalls' },
-                  { id: 'ethics', title: 'Ethics & Code Principles' }
+                  { id: 'journey', title: 'Learning Journey' },
+                  { id: 'practice', title: 'Hands-on Practice & Application' },
+                  { id: 'debugging', title: 'Common Pitfalls & Troubleshooting' },
+                  { id: 'ethics', title: 'Professional Ethics & Standards' }
                 ] : activeRole === 'educator' ? [
                   { id: 'facilitator_guide', title: 'Facilitator Guide' },
                   { id: 'lesson_plan', title: 'Lesson Plan & Timing' },

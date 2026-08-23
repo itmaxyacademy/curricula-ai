@@ -958,7 +958,12 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
             fontSize=18,
             leading=24,
             alignment=0,
-            textColor=colors.HexColor('#1A2040'),
+            textColor=colors.HexColor('#FFFFFF'),
+            backColor=colors.HexColor('#1A2040'),
+            borderColor=colors.HexColor('#E9B259'),
+            borderWidth=0,
+            borderPadding=(16, 16, 16, 16),
+            borderRadius=8,
             spaceAfter=14
         )
         h1_style = ParagraphStyle(
@@ -969,6 +974,9 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
             leading=17,
             alignment=0,
             textColor=colors.HexColor('#2D3561'),
+            backColor=colors.HexColor('#FFF8EC'),
+            borderPadding=(8, 8, 10, 10),
+            borderRadius=5,
             spaceBefore=16,
             spaceAfter=10,
             keepWithNext=True
@@ -980,7 +988,10 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
             fontSize=11.5,
             leading=14,
             alignment=0,
-            textColor=colors.HexColor('#C8913A'),
+            textColor=colors.HexColor('#FFFFFF'),
+            backColor=colors.HexColor('#C8913A'),
+            borderPadding=(5, 5, 8, 8),
+            borderRadius=4,
             spaceBefore=12,
             spaceAfter=7,
             keepWithNext=True

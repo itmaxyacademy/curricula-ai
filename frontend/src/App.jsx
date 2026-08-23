@@ -10,6 +10,7 @@ import { HomePage } from './pages/HomePage';
 import { CourseLibrary } from './pages/CourseLibrary';
 import { WizardPage } from './pages/WizardPage';
 import { DeleteCourseModal } from './components/modals/DeleteCourseModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // ── Custom Hooks / Controllers ──
 import { useToast } from './hooks/useToast';
@@ -136,8 +137,10 @@ export default function App() {
         setCourseData={wizard.setCourseData}
         setUploadedFileName={wizard.setUploadedFileName}
         setPendingFile={wizard.setPendingFile}
-        setSubjectContext={wizard.setSubjectContext}
+        sessionId={wizard.sessionId}
+        currentStep={currentStep}
         setCurrentStep={setCurrentStep}
+        API_BASE={API_BASE}
         fetchSessions={wizard.fetchSessions}
         resetWizardState={wizard.resetWizardState}
         toast={toast}
@@ -187,50 +190,56 @@ export default function App() {
 
         {/* ── Home Page View ── */}
         {currentView === 'home' && (
-          <HomePage
-            greeting={auth.greeting}
-            sessionsList={wizard.sessionsList}
-            handleResumeSession={(sess) => wizard.handleResumeSession(sess, setPptxDataByLessonRef)}
-            selectedTopicCategory={wizard.selectedTopicCategory}
-            setSelectedTopicCategory={wizard.setSelectedTopicCategory}
-            setPromptText={wizard.setPromptText}
-            setCurrentView={setCurrentView}
-            setCurrentStep={setCurrentStep}
-            toast={toast}
-          />
+          <ErrorBoundary name="HomePage">
+            <HomePage
+              greeting={auth.greeting}
+              sessionsList={wizard.sessionsList}
+              handleResumeSession={(sess) => wizard.handleResumeSession(sess, setPptxDataByLessonRef)}
+              selectedTopicCategory={wizard.selectedTopicCategory}
+              setSelectedTopicCategory={wizard.setSelectedTopicCategory}
+              setPromptText={wizard.setPromptText}
+              setCurrentView={setCurrentView}
+              setCurrentStep={setCurrentStep}
+              toast={toast}
+            />
+          </ErrorBoundary>
         )}
 
         {/* ── Courses Page View (Course Library Layout) ── */}
         {currentView === 'courses' && (
-          <CourseLibrary
-            setCurrentView={setCurrentView}
-            setCurrentStep={setCurrentStep}
-            librarySearchQuery={wizard.librarySearchQuery}
-            setLibrarySearchQuery={wizard.setLibrarySearchQuery}
-            libraryFilterTab={wizard.libraryFilterTab}
-            setLibraryFilterTab={wizard.setLibraryFilterTab}
-            librarySelectedTag={wizard.librarySelectedTag}
-            setLibrarySelectedTag={wizard.setLibrarySelectedTag}
-            libraryPubPage={wizard.libraryPubPage}
-            setLibraryPubPage={wizard.setLibraryPubPage}
-            sessionsList={wizard.sessionsList}
-            fetchSessions={wizard.fetchSessions}
-            API_BASE={API_BASE}
-            setDeleteTargetSession={wizard.setDeleteTargetSession}
-            handleResumeSession={(sess) => wizard.handleResumeSession(sess, setPptxDataByLessonRef)}
-            resetWizardState={wizard.resetWizardState}
-          />
+          <ErrorBoundary name="CourseLibrary">
+            <CourseLibrary
+              setCurrentView={setCurrentView}
+              setCurrentStep={setCurrentStep}
+              librarySearchQuery={wizard.librarySearchQuery}
+              setLibrarySearchQuery={wizard.setLibrarySearchQuery}
+              libraryFilterTab={wizard.libraryFilterTab}
+              setLibraryFilterTab={wizard.setLibraryFilterTab}
+              librarySelectedTag={wizard.librarySelectedTag}
+              setLibrarySelectedTag={wizard.setLibrarySelectedTag}
+              libraryPubPage={wizard.libraryPubPage}
+              setLibraryPubPage={wizard.setLibraryPubPage}
+              sessionsList={wizard.sessionsList}
+              fetchSessions={wizard.fetchSessions}
+              API_BASE={API_BASE}
+              setDeleteTargetSession={wizard.setDeleteTargetSession}
+              handleResumeSession={(sess) => wizard.handleResumeSession(sess, setPptxDataByLessonRef)}
+              resetWizardState={wizard.resetWizardState}
+            />
+          </ErrorBoundary>
         )}
 
         {/* ── Wizard Flow View ── */}
         {currentView === 'wizard' && (
-          <WizardPage
-            wizard={wizard}
-            exports={exports}
-            currentStep={currentStep}
-            setCurrentStep={setCurrentStep}
-            toast={toast}
-          />
+          <ErrorBoundary name="WizardPage">
+            <WizardPage
+              wizard={wizard}
+              exports={exports}
+              currentStep={currentStep}
+              setCurrentStep={setCurrentStep}
+              toast={toast}
+            />
+          </ErrorBoundary>
         )}
       </div>
 

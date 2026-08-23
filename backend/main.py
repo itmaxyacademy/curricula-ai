@@ -29,6 +29,20 @@ except Exception:
 
 try:
     with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN created_at VARCHAR(32)"))
+        conn.commit()
+except Exception:
+    pass
+
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN all_suggested_tags TEXT"))
+        conn.commit()
+except Exception:
+    pass
+
+try:
+    with engine.connect() as conn:
         dialect = engine.dialect.name
         if dialect == "mysql":
             result = conn.execute(text("SHOW TABLES LIKE 'pptx'"))

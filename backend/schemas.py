@@ -23,7 +23,7 @@ class GroundingInput(BaseModel):
 
 class CourseConfigUpdate(BaseModel):
     lessons_count: int
-    duration: int
+    duration: Any
     difficulty: str
     target_audience: str
     subject_context: str
@@ -33,7 +33,7 @@ class ProposalSelect(BaseModel):
     selected_proposal_id: int
 
 class LessonUpdate(BaseModel):
-    id: int
+    id: Any
     title: str
     order: int
     sections: Optional[dict] = None

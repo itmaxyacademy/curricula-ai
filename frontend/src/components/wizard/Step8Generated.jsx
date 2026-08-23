@@ -540,8 +540,15 @@ export function Step8Generated({
                             <ContentRenderer text={activeLessonContent.why_this_matters} />
                           </div>
 
+                          {(activeLessonContent.learning_journey || activeLessonContent.journey) && (
+                            <div className="why-matters-card" style={{ borderLeft: '4px solid var(--blue)', marginTop: '14px' }}>
+                              <h4>🧭 Learning Journey</h4>
+                              <ContentRenderer text={activeLessonContent.learning_journey || activeLessonContent.journey} />
+                            </div>
+                          )}
+
                           <div className="content-block">
-                            <h3>{activeLessonContent.practice?.content_type === 'markdown' ? 'Interactive Scenario / Case Study' : 'Interactive Coding Sandbox'}</h3>
+                            <h3>{activeLessonContent.practice?.code_block ? '💻 Interactive Coding Sandbox' : '📋 Hands-on Practice & Application'}</h3>
                             {activeLessonContent.practice?.content_type === 'markdown' ? (
                               <ContentRenderer text={activeLessonContent.practice?.code_block || ''} />
                             ) : (
@@ -564,12 +571,12 @@ export function Step8Generated({
                           </div>
 
                           <div className="content-block">
-                            <h3>Debugging Pitfalls</h3>
+                            <h3>⚠️ Common Pitfalls &amp; Troubleshooting</h3>
                             <ContentRenderer text={activeLessonContent.debugging} />
                           </div>
 
                           <div className="content-block">
-                            <h3>Ethics &amp; Code Principles</h3>
+                            <h3>⚖️ Professional Ethics &amp; Best Practices</h3>
                             <ContentRenderer text={activeLessonContent.ethics} />
                           </div>
                         </div>

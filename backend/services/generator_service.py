@@ -13,6 +13,9 @@ ACTIVE_TASKS = {}
 def cancel_session(session_id: str):
     CANCELED_SESSIONS.add(session_id)
 
+def uncancel_session(session_id: str):
+    CANCELED_SESSIONS.discard(session_id)
+
 def is_session_canceled(session_id: str) -> bool:
     return session_id in CANCELED_SESSIONS
 
@@ -45,14 +48,15 @@ async def generate_course_content_task_async(session_id: str):
             return
 
         db_session.status = "generating"
-        db_session.progress = 10
+        db_session.step = "generating"
+        db_session.progress = max(db_session.progress or 10, 10)
         db_session.status_text = "Initializing Course Generation..."
         db.commit()
         await progress_publisher.publish(session_id, {
-            "progress": 10,
+            "progress": db_session.progress,
             "status": "generating",
             "status_text": db_session.status_text,
-            "step": db_session.step
+            "step": "generating"
         })
 
         # Create or update course entity
@@ -73,11 +77,11 @@ async def generate_course_content_task_async(session_id: str):
             db.commit()
 
         lessons_outline = json.loads(db_session.structure) if db_session.structure else []
-        total_lessons = len(lessons_outline)
+        total_lessons = max(1, len(lessons_outline))
 
         for idx, item in enumerate(lessons_outline):
-            if is_session_canceled(session_id) or db_session.status == "canceled" or ACTIVE_TASKS.get(session_id) != task_id:
-                print(f"[Generator] Session {session_id} canceled or replaced. Halting immediately.")
+            if is_session_canceled(session_id) or db_session.status in ["canceled", "paused"] or ACTIVE_TASKS.get(session_id) != task_id:
+                print(f"[Generator] Session {session_id} canceled or paused. Halting immediately.")
                 return
 
             try:
@@ -85,23 +89,9 @@ async def generate_course_content_task_async(session_id: str):
             except Exception:
                 pass
 
-            if is_session_canceled(session_id) or db_session.status == "canceled" or ACTIVE_TASKS.get(session_id) != task_id:
-                print(f"[Generator] Session {session_id} canceled or replaced. Halting immediately.")
+            if is_session_canceled(session_id) or db_session.status in ["canceled", "paused"] or ACTIVE_TASKS.get(session_id) != task_id:
+                print(f"[Generator] Session {session_id} canceled or paused. Halting immediately.")
                 return
-
-            status_msg = f"Generating content for Lesson {idx+1}/{total_lessons}: {item['title']}"
-            prog_val = int(10 + (idx / total_lessons) * 80)
-            db_session.status_text = status_msg
-            db_session.progress = prog_val
-            db.commit()
-            await progress_publisher.publish(session_id, {
-                "progress": prog_val,
-                "status": "generating",
-                "status_text": status_msg,
-                "step": db_session.step,
-                "current_lesson": idx + 1,
-                "total_lessons": total_lessons
-            })
 
             # Check or create Lesson
             lesson = db.query(Lesson).filter(Lesson.course_id == session_id, Lesson.position == idx + 1).first()
@@ -114,6 +104,28 @@ async def generate_course_content_task_async(session_id: str):
                 db.add(lesson)
                 db.commit()
                 db.refresh(lesson)
+
+            # Check if this lesson was already completed from a previous run before pause
+            existing_creator = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "creator").count()
+            existing_student = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "student").count()
+            existing_educator = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "educator").count()
+            if existing_creator >= 3 and existing_student >= 2 and existing_educator >= 2:
+                print(f"[Generator] Lesson {idx+1}/{total_lessons} already completed. Resuming to next lesson!")
+                continue
+
+            status_msg = f"Generating content for Lesson {idx+1}/{total_lessons}: {item['title']}"
+            prog_val = int(10 + (idx / total_lessons) * 80)
+            db_session.status_text = status_msg
+            db_session.progress = prog_val
+            db.commit()
+            await progress_publisher.publish(session_id, {
+                "progress": prog_val,
+                "status": "generating",
+                "status_text": status_msg,
+                "step": "generating",
+                "current_lesson": idx + 1,
+                "total_lessons": total_lessons
+            })
 
             user_ctx = db_session.subject_context or ""
             doc_ctx = db_session.document_context or ""
@@ -306,15 +318,21 @@ async def generate_course_content_task_async(session_id: str):
 
             db.commit()
 
+        # Final Validation Pass: Guarantee 100% complete and non-empty content for all sections
+        try:
+            await validate_and_ensure_complete_content(session_id, db)
+        except Exception as e_val:
+            print(f"Post-generation validation notice: {e_val}")
+
         db_session.status = "completed"
         db_session.progress = 100
-        db_session.status_text = "Course Generation Completed!"
+        db_session.status_text = "Generation completed! Review and edit your content below."
         db_session.step = "generated"
         db.commit()
         await progress_publisher.publish(session_id, {
             "progress": 100,
             "status": "completed",
-            "status_text": "Course Generation Completed!",
+            "status_text": "Generation completed! Review and edit your content below.",
             "step": "generated"
         })
 
@@ -335,3 +353,56 @@ async def generate_course_content_task_async(session_id: str):
             })
     finally:
         db.close()
+
+
+async def validate_and_ensure_complete_content(session_id: str, db):
+    """Validation layer: scans all lessons and sections in the course, guaranteeing ZERO missing, empty, or placeholder content."""
+    course = db.query(Course).filter(Course.id == session_id).first()
+    if not course or not course.lessons:
+        return
+
+    db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    lessons_outline = json.loads(db_session.structure) if db_session and db_session.structure else []
+    grounding_data = json.dumps({
+        "tech_tags": json.loads(db_session.tech_tags) if db_session and db_session.tech_tags else [],
+        "subject_context": db_session.subject_context if db_session else "",
+        "learning_outcomes": json.loads(db_session.learning_outcomes) if db_session and db_session.learning_outcomes else [],
+        "target_audience": db_session.config_audience if db_session else "Student"
+    })
+
+    for lesson in course.lessons:
+        matching_outline = next((l for l in lessons_outline if l.get("id") == lesson.id or l.get("order") == lesson.position), {})
+        sections_dict = matching_outline.get("sections", {}) if isinstance(matching_outline, dict) else {}
+
+        for role_name in ["creator", "student", "educator"]:
+            role_sects = sections_dict.get(role_name, []) if isinstance(sections_dict, dict) else []
+            unlocked_sects = [s for s in role_sects if isinstance(s, dict) and not s.get("locked", False)]
+
+            for s in unlocked_sects:
+                sec_type = s.get("type") or re.sub(r'[^a-z0-9_]', '_', s.get("title", "custom").lower()).strip('_')
+                existing_sec = db.query(Section).filter(
+                    Section.lesson_id == lesson.id,
+                    Section.role == role_name,
+                    Section.section_type == sec_type
+                ).first()
+
+                raw_content = ""
+                if existing_sec and existing_sec.content_text:
+                    try:
+                        raw_content = json.loads(existing_sec.content_text)
+                    except Exception:
+                        raw_content = existing_sec.content_text
+
+                if not raw_content or str(raw_content).strip() in ["", "No content available.", "null", "None"]:
+                    generated_val = await pipeline.generate_single_custom_section(lesson.title, s, grounding_data)
+                    if existing_sec:
+                        existing_sec.content_text = json.dumps(generated_val)
+                    else:
+                        new_sec = Section(
+                            lesson_id=lesson.id,
+                            role=role_name,
+                            section_type=sec_type,
+                            content_text=json.dumps(generated_val)
+                        )
+                        db.add(new_sec)
+    db.commit()

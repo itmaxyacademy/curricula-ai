@@ -13,9 +13,9 @@ export const defaultSections = {
   student: [
     { id: 'sec-6', type: 'why_matters', title: 'Why This Matters', locked: true, instruction: 'Explain real-world relevance.' },
     { id: 'sec-7', type: 'journey', title: 'Learning Journey', locked: true, instruction: 'Provide structured walk through tips.' },
-    { id: 'sec-8', type: 'practice', title: 'Practice Exercises', locked: true, instruction: 'Create student task items.' },
-    { id: 'sec-9', type: 'debugging', title: 'Debugging Tips', locked: true, instruction: 'Common issues and error handling.' },
-    { id: 'sec-10', type: 'ethics', title: 'Ethics & Best Practices', locked: true, instruction: 'Provide ethical scope and optimization standards.' }
+    { id: 'sec-8', type: 'practice', title: 'Hands-on Practice & Application', locked: true, instruction: 'Create student task items.' },
+    { id: 'sec-9', type: 'debugging', title: 'Common Pitfalls & Troubleshooting', locked: true, instruction: 'Common issues and error handling.' },
+    { id: 'sec-10', type: 'ethics', title: 'Professional Ethics & Best Practices', locked: true, instruction: 'Provide ethical scope and optimization standards.' }
   ],
   educator: [
     { id: 'sec-11', type: 'facilitator', title: 'Facilitator Guide', locked: true, instruction: 'Provide educator delivery outline.' },

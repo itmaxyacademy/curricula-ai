@@ -47,15 +47,38 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     }
   };
 
+  const toTitleCase = (str) => {
+    if (!str || typeof str !== 'string') return '';
+    const minorWords = new Set(['and', 'or', 'the', 'a', 'an', 'in', 'on', 'of', 'for', 'with', 'at', 'by', 'to']);
+    return str
+      .trim()
+      .split(/\s+/)
+      .map((word, index) => {
+        const lower = word.toLowerCase();
+        if (index > 0 && minorWords.has(lower)) return lower;
+        return lower.charAt(0).toUpperCase() + lower.slice(1);
+      })
+      .join(' ');
+  };
+
   const handleAddCustomTag = (e) => {
     if (e?.key && e.key !== 'Enter') return;
-    const trimmed = newTag.trim();
-    if (trimmed) {
-      if (!allSuggestedTags.includes(trimmed)) {
-        setAllSuggestedTags(prev => [...prev, trimmed]);
+    const raw = (newTag || '').trim();
+    if (!raw) return;
+
+    // Filter out spam (single chars, repeated letters like 'aaaaa', or punctuation only)
+    if (raw.length < 2 || /^(.)\1+$/.test(raw) || !/[a-zA-Z0-9]/.test(raw)) {
+      if (toast) toast.warning('Please enter a valid skill or concept tag.');
+      return;
+    }
+
+    const formatted = toTitleCase(raw);
+    if (formatted) {
+      if (!allSuggestedTags.includes(formatted)) {
+        setAllSuggestedTags(prev => [...prev, formatted]);
       }
-      if (!techTags.includes(trimmed)) {
-        setTechTags(prev => [...prev, trimmed]);
+      if (!techTags.includes(formatted)) {
+        setTechTags(prev => [...prev, formatted]);
       }
       setNewTag('');
     }
@@ -288,8 +311,30 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     let fallbackInterval = null;
 
     const handleProgressUpdate = async (data) => {
-      if (data.progress !== undefined) setGenerationProgress(data.progress);
-      if (data.status_text) setGenerationStatusText(data.status_text);
+      const isCompleted = data.status === 'completed' || data.progress >= 100;
+      
+      if (data.progress !== undefined) {
+        setGenerationProgress(isCompleted ? 100 : data.progress);
+      }
+      
+      const canonicalStatusText = isCompleted
+        ? 'Generation completed! Review and edit your content below.'
+        : (data.status_text || '');
+        
+      if (canonicalStatusText) {
+        setGenerationStatusText(canonicalStatusText);
+      }
+
+      if (isCompleted) {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (fallbackInterval) {
+          clearInterval(fallbackInterval);
+          fallbackInterval = null;
+        }
+      }
 
       try {
         const res = await fetch(`${API_BASE}/courses/sessions/${sessionId}`);
@@ -299,9 +344,15 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
             setCourseData(sessData);
             if (!activeLessonId) setActiveLessonId(sessData.lessons[0].id);
           }
-          if (sessData.status === 'completed' || data.status === 'completed' || sessData.step === 'generated') {
-            if (eventSource) eventSource.close();
-            if (fallbackInterval) clearInterval(fallbackInterval);
+          if (sessData.status === 'completed' || isCompleted || sessData.step === 'generated') {
+            if (eventSource) {
+              eventSource.close();
+              eventSource = null;
+            }
+            if (fallbackInterval) {
+              clearInterval(fallbackInterval);
+              fallbackInterval = null;
+            }
             setCourseData(sessData);
             if (sessData.lessons?.length > 0) setActiveLessonId(sessData.lessons[0].id);
             setGenerationProgress(100);
@@ -314,14 +365,14 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
               toast.success("Generation completed! Review & edit your course material below, or click 'Proceed to Assets' when ready.");
               fetchSessions();
             }
-          } else if (sessData.status === 'canceled' || data.status === 'canceled') {
+          } else if (data.status === 'canceled') {
             if (eventSource) eventSource.close();
             if (fallbackInterval) clearInterval(fallbackInterval);
             setCurrentStep('review');
-          } else if (sessData.status === 'error' || data.status === 'error') {
+          } else if (data.status === 'error') {
             if (eventSource) eventSource.close();
             if (fallbackInterval) clearInterval(fallbackInterval);
-            toast.error(sessData.status_text || data.status_text);
+            toast.error(data.status_text || 'Generation encountered an error');
             setCurrentStep('review');
           }
         }
@@ -369,9 +420,16 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
+  const MAX_FILE_SIZE_MB = 10;
+
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast.error(`File size exceeds ${MAX_FILE_SIZE_MB}MB limit. Please upload a smaller document.`);
+      event.target.value = '';
+      return;
+    }
     if (activeFileName) {
       const confirmReplace = window.confirm(`Replacing attached document "${activeFileName}" with "${file.name}". Continue?`);
       if (!confirmReplace) {
@@ -387,6 +445,11 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast.error(`File size exceeds ${MAX_FILE_SIZE_MB}MB limit. Please upload a smaller document.`);
+      event.target.value = '';
+      return;
+    }
     if (activeFileName) {
       const confirmReplace = window.confirm(`Replacing attached document "${activeFileName}" with "${file.name}". Continue?`);
       if (!confirmReplace) {
@@ -499,12 +562,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
         const cleanContext = (data.subject_context || '').replace(/\[(DOMAIN|INTERACTIVITY|TOOLS REQUIRED|FINAL PROJECT|EXPLICIT OUTLINE):[^\]]*\]\n?/gi, '').trim();
         setSubjectContext(cleanContext);
         const initialConfigHash = JSON.stringify({
-          techTags: loadedTech,
+          techTags: Array.from(new Set(loadedTech || [])).sort(),
           configDifficulty: data.config?.difficulty || 'Beginner',
           configAudience: data.config?.target_audience || 'Student',
-          configLessons: data.config?.lessons_count || 5,
-          configDuration: data.config?.duration || 60,
-          subjectContext: cleanContext,
+          configLessons: Number(data.config?.lessons_count || 5),
+          configDuration: Number(data.config?.duration || 60),
+          subjectContext: (cleanContext || '').trim().replace(/\s+/g, ' '),
         });
         setLastSavedConfigHash(initialConfigHash);
         setCurrentView('wizard');
@@ -600,12 +663,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
   const handleGenerateProposals = async () => {
     setIsLoading(true);
     const currentConfigHash = JSON.stringify({
-      techTags,
+      techTags: Array.from(new Set(techTags || [])).sort(),
       configDifficulty,
       configAudience,
-      configLessons,
-      configDuration,
-      subjectContext: (subjectContext || '').replace(/\s+/g, ' ').trim(),
+      configLessons: Number(configLessons),
+      configDuration: Number(configDuration),
+      subjectContext: (subjectContext || '').trim().replace(/\s+/g, ' '),
     });
 
     try {
@@ -651,7 +714,7 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     setIsLoading(true);
     try {
       if (sessionId) {
-        await fetch(`${API_BASE}/courses/sessions/${sessionId}/grounding`, {
+        const gRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/grounding`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -662,6 +725,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
             target_audience: configAudience,
           }),
         });
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          if (gData.prerequisites) setPrerequisites(gData.prerequisites);
+          if (gData.out_of_scope) setBoundaries(gData.out_of_scope);
+          if (gData.learning_outcomes) setLearningOutcomes(gData.learning_outcomes);
+        }
       }
 
       if (proposals.length === 0 && sessionId) {
@@ -765,11 +834,17 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     completedToastSessionRef.current = null;
     try {
       if (sessionId && structure && structure.length > 0) {
-        await fetch(`${API_BASE}/courses/sessions/${sessionId}/structure/save`, {
+        const structRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/structure/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lessons: structure })
         }).catch(err => console.warn('Pre-generation structure save notice:', err));
+        if (structRes && structRes.ok) {
+          const structData = await structRes.json().catch(() => ({}));
+          if (structData.structure) {
+            setStructure(structData.structure);
+          }
+        }
       }
       const res = await fetch(`${API_BASE}/courses/sessions/${sessionId}/content/generate`, {
         method: 'POST',
@@ -905,10 +980,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
           setCourseData(data);
           setActiveLessonId(data.lessons[0].id);
           setCurrentStep('generated');
-        } else if (data.status === 'generating' || data.status === 'queued') {
-          setGenerationProgress(data.progress || 5);
-          setGenerationStatusText(data.status_text || 'Resuming generation...');
+        } else if (data.status === 'generating' || data.status === 'queued' || data.status === 'paused' || data.step === 'generating') {
+          setGenerationProgress(data.progress || 10);
+          setGenerationStatusText(data.status_text || 'Resuming generation from last lesson...');
           setCurrentStep('generating');
+          // Trigger resume on backend to continue from the last uncompleted lesson
+          fetch(`${API_BASE}/courses/sessions/${data.session_id}/content/generate`, { method: 'POST' }).catch(() => {});
         } else {
           const stepMap = { context: 'context', grounding: 'grounding', proposal: 'proposal', structure: 'structure', review: 'review', generated: 'review' };
           setCurrentStep(stepMap[data.step] || 'context');

@@ -166,16 +166,23 @@ export function EducatorView({
     // Custom unlocked sections
     if (!sec.locked) {
       const rawContent = activeLessonContent[sec.type];
-      const secContent = (rawContent && typeof rawContent === 'string' && !rawContent.includes('is not generated yet')) ? rawContent : (typeof rawContent === 'object' && rawContent !== null ? rawContent : `### ${sec.title}\nThis section provides detailed instructional support for **${sec.title}**.`);
+      const secContent = (rawContent && typeof rawContent === 'string' && !rawContent.includes('is not generated yet')) ? rawContent : (typeof rawContent === 'object' && rawContent !== null ? rawContent : `This section provides detailed instructional support for **${sec.title}**.`);
+      
+      let cleanContent = secContent;
+      if (typeof cleanContent === 'string') {
+        const escapedTitle = sec.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        cleanContent = cleanContent.replace(new RegExp(`^#{1,6}\\s*${escapedTitle}\\s*\\n*`, 'i'), '').trim();
+      }
+
       const isEditing = editingSection === sec.type;
       return (
         <div key={sec.type} id={`step7-sec-${sec.type}`} className="content-block" style={{ scrollMarginTop: '110px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h3 style={{ margin: 0 }}>{sec.title}</h3>
-            {isEditing ? (<div style={{ display: 'flex', gap: '8px' }}><button className="ai-pill-btn edit" onClick={() => handleSaveManualEdit(sec.type, editingText)}>Save</button><button className="ai-pill-btn" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }} onClick={() => setEditingSection(null)}>Cancel</button></div>) : (<button className="ai-pill-btn edit" onClick={() => { setEditingSection(sec.type); setEditingText(typeof secContent === 'string' ? secContent : JSON.stringify(secContent, null, 2)); }}>Edit</button>)}
+            {isEditing ? (<div style={{ display: 'flex', gap: '8px' }}><button className="ai-pill-btn edit" onClick={() => handleSaveManualEdit(sec.type, editingText)}>Save</button><button className="ai-pill-btn" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }} onClick={() => setEditingSection(null)}>Cancel</button></div>) : (<button className="ai-pill-btn edit" onClick={() => { setEditingSection(sec.type); setEditingText(typeof cleanContent === 'string' ? cleanContent : JSON.stringify(cleanContent, null, 2)); }}>Edit</button>)}
           </div>
-          {isEditing ? (<textarea className="prompt-textarea" style={{ minHeight: '150px' }} value={editingText} onChange={(e) => setEditingText(e.target.value)} />) : (<ContentRenderer text={typeof secContent === 'string' ? secContent : JSON.stringify(secContent, null, 2)} />)}
-          {renderAIActionBar && renderAIActionBar(sec.type, secContent)}
+          {isEditing ? (<textarea className="prompt-textarea" style={{ minHeight: '150px' }} value={editingText} onChange={(e) => setEditingText(e.target.value)} />) : (<ContentRenderer text={cleanContent} />)}
+          {renderAIActionBar && renderAIActionBar(sec.type, cleanContent)}
         </div>
       );
     }

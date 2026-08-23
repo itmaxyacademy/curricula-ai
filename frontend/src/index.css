@@ -145,7 +145,6 @@ button svg, a svg, .icon-btn svg, .icon-btn-tool svg, .review-card-edit-btn svg 
 }
 .page-transition {
   animation: pageSlideIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform, opacity;
 }
 
 /* ── Smooth nav tab indicator ───────────────────────────── */
@@ -3738,28 +3737,40 @@ html {
   color: #FFFFFF;
 }
 
-/* ── Custom Section Modal ───────────────────────────────── */
+/* ── Custom Section & Global Modals ────────────────────────────── */
 .modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(26, 32, 64, 0.55);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-  padding: 20px;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 99999 !important;
+  padding: 24px !important;
+  overflow-y: auto !important;
 }
 
-.add-section-modal {
-  background: var(--white);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 20px 50px rgba(26, 32, 64, 0.3);
-  width: 100%;
-  max-width: 520px;
-  padding: 28px;
-  border: 1px solid var(--border-color);
-  animation: modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+.add-section-modal,
+.export-modal,
+.history-modal,
+.delete-modal {
+  background: var(--white) !important;
+  border-radius: var(--radius-xl, 16px) !important;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  width: 100% !important;
+  max-width: 520px !important;
+  max-height: calc(100vh - 48px) !important;
+  overflow-y: auto !important;
+  padding: 28px !important;
+  border: 1px solid var(--border-color) !important;
+  margin: auto !important;
+  position: relative !important;
+  z-index: 100000 !important;
+  animation: modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 @keyframes modalPop {

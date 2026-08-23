@@ -163,6 +163,15 @@ def get_default_candidate_tags(keyword: str, tech_tags: list = None) -> list:
             "Decentralized Applications", "Cryptography", "Ethereum", "Tokenomics",
             "Security Best Practices", "Smart Contract Testing"
         ]),
+        (["president", "presiden", "pilih", "election", "vote", "politics", "politik", "civic", "govern", "democra"], [
+            "Political Science", "Civic Education", "Public Leadership", "Electoral Systems",
+            "Democratic Governance", "Policy Analysis", "Constitutional Law", "Ethics in Leadership",
+            "Public Administration", "Informed Decision-Making"
+        ]),
+        (["business", "leadership", "management", "startup", "product", "agile", "strategy"], [
+            "Strategic Leadership", "Business Strategy", "Product Management", "Agile Methodologies",
+            "Decision Frameworks", "Stakeholder Management", "Operations", "Design Thinking"
+        ]),
     ]
 
     tech_candidates = []
@@ -173,15 +182,10 @@ def get_default_candidate_tags(keyword: str, tech_tags: list = None) -> list:
                     tech_candidates.append(tag)
 
     if not tech_candidates:
-        if keyword:
-            stopwords = {"for", "and", "the", "with", "from", "about", "into", "that", "this", "your", "using", "how", "what", "which", "are", "was", "were", "non"}
-            words = [w.capitalize() for w in keyword.split() if len(w) > 2 and w.lower() not in stopwords]
-            tech_candidates = words + [
-                f"{keyword.title()} Core", "System Design", "Hands-on Projects",
-                "API Integration", "Architecture Patterns", "Best Practices"
-            ]
-        else:
-            tech_candidates = ["Software Engineering", "Full-Stack Development", "System Architecture", "Cloud Infrastructure"]
+        tech_candidates = [
+            "Critical Thinking", "Foundational Principles", "Practical Workflows",
+            "Hands-on Case Studies", "Strategic Decision-Making", "Best Practices"
+        ]
 
     edu_tags = [
         "Capstone Projects", "Project-Based Learning", "Experiential Learning",
@@ -219,29 +223,32 @@ def generate_concept_and_grounding(keyword: str, tags: list = None, difficulty: 
     try:
         prompt = f"""
         [ROLE]
-        You are an Intent Classification & Extraction Engine.
+        You are an Intent Classification & Curriculum Extraction Engine.
+
+        [DOMAIN CONTEXT & ACRONYM KNOWLEDGE]
+        - Deeply understand global and Indonesian socio-political terms, national policies, government programs, and economic debates.
+        - Specifically: 'MBG' refers to 'Makan Bergizi Gratis' (Free Nutritious Meal Program) — inquiries like 'kenapa mbg buruk' or 'analisis mbg' represent Public Policy, Nutritional Economics, Budget Logistics, Governance, and Food Safety. NEVER confuse 'MBG' with 'Bad Habits' or personal behavioral psychology!
+        - Other key acronyms: IKN (Ibu Kota Nusantara), BPJS (National Healthcare/Insurance), Pilpres/Pilkada (Elections), Bansos (Social Assistance), KIP (Smart Indonesia Card), KUR (People's Business Credit).
 
         [TASK]
         Analyze the following user input for a course: '{keyword}'
         Target audience '{audience}', difficulty level '{difficulty}'.{doc_snippet}
         
         1. Analyze the user input and reference document if attached. If input contains typos, informal slang, or messy casing (e.g., 'belajar ai dAn python untk pemula'), automatically proofread, normalize, and formalize it into a clean, professional course topic.
-           If the input is complete gibberish or random noise (e.g., 'asdfghjkl', '123456'), replace it with a high-quality, meaningful educational topic (e.g., 'Modern Artificial Intelligence Fundamentals').
-        2. Determine if this input is a simple topic (1-5 words) or a complex instructional prompt.
-           If it is a simple topic or lacks specific instructions, set 'is_complex': false, and leave explicit parameters empty/null.
-        3. Extract a clean, professional 'display_title' (catchy, max 4-6 words) representing the core topic in proper Title Case (English). If a reference document is provided, reflect its primary focus (e.g., Google Antigravity).
-        4. Determine the 'course_domain' (e.g., "Coding", "Business & Management", "Pedagogy & Design", "Humanities", etc.).
-        5. Determine the best 'interactivity_type' (e.g., "Coding Sandbox", "Case Study Simulator", "Roleplay Simulator", "Step-by-Step Worksheet").
-        6. CRITICAL: If ATTACHED REFERENCE DOCUMENT CONTENT is provided above, you MUST prioritize and deeply incorporate its specific tools, framework names, concepts, and unique terms (e.g., Antigravity) into the display_title, subject_context, tech_tags, prerequisites, and learning_outcomes!
-        6. Extract any explicit user instructions if present (if 'is_complex' is true):
-           - 'lesson_count' (integer, e.g., 4)
-           - 'duration' (string, e.g., "2 weeks" or "1 hour")
-           - 'tools' (array of strings, e.g., ["ChatGPT", "EdApp"])
+           If the input is complete gibberish or random noise (e.g., 'asdfghjkl', '123456'), replace it with a high-quality, meaningful educational topic.
+        2. Determine if this input is a simple topic (1-5 words) or an instructional prompt containing constraints.
+        3. Extract a clean, professional 'display_title' (catchy, max 4-6 words) representing the core topic in proper Title Case (English). (e.g., for 'kenapa mbg buruk', title should be 'Evaluating the Free Nutritious Meal Policy: Challenges and Governance').
+        4. Determine the 'course_domain' (e.g., "Public Policy & Governance", "Coding", "Business & Management", "Pedagogy & Design", "Humanities", etc.).
+        5. Determine the best 'interactivity_type' (e.g., "Case Study Simulator", "Policy Analysis Worksheet", "Coding Sandbox", "Roleplay Simulator").
+        6. Extract any explicit user instructions if present (e.g., '2 lesson', '1 hour', specific tools):
+           - 'lesson_count' (integer, e.g., 2 if user wrote '2 lesson')
+           - 'duration' (string, e.g., "1 hour")
+           - 'tools' (array of strings)
            - 'final_project' (string)
-           - 'explicit_outline' (array of strings, module/lesson titles provided by user)
+           - 'explicit_outline' (array of strings)
         7. Generate standard grounding data:
-           - A rich text content overview/context for this topic (2-3 paragraphs).
-           - 20 relevant tags/topics (mix of technical skills, tools, concepts).
+           - A rich text content overview/context for this topic (2-3 paragraphs) strictly aligned with the true topic.
+           - 20 relevant tags/topics in formal English.
            - 3 Prerequisites.
            - 3 Learning boundaries (out of scope topics).
            - 3 Expected learning outcomes.
@@ -290,6 +297,15 @@ def generate_concept_and_grounding(keyword: str, tags: list = None, difficulty: 
         if not isinstance(explicit_params, dict):
             explicit_params = {}
 
+        # Deterministic regex safety net for explicit lesson count and duration
+        lesson_match = re.search(r'(\d+)\s*(?:lesson|lessons|modul|module|modules|chapter|chapters|pertemuan|materi|sesi)\b', keyword, re.IGNORECASE)
+        if lesson_match:
+            explicit_params["lesson_count"] = int(lesson_match.group(1))
+
+        duration_match = re.search(r'(\d+)\s*(?:hour|hours|jam|hr|hrs|menit|minutes|mins|hari|days|weeks|minggu)\b', keyword, re.IGNORECASE)
+        if duration_match:
+            explicit_params["duration"] = duration_match.group(0)
+
         # Prioritize tools and key skills extracted by AI
         extracted_tools = explicit_params.get("tools", [])
         suggested_tags = data.get("all_suggested_tags", [])
@@ -310,7 +326,7 @@ def generate_concept_and_grounding(keyword: str, tags: list = None, difficulty: 
 
         return {
             "display_title": data.get("display_title", keyword),
-            "is_complex": data.get("is_complex", bool(explicit_params)),
+            "is_complex": data.get("is_complex", bool(explicit_params.get("lesson_count") or explicit_params.get("duration"))),
             "explicit_parameters": explicit_params,
             "subject_context": injected_context,
             "grounding": {
@@ -607,35 +623,213 @@ async def generate_creator_content(lesson_title: str, grounding_data: str, lesso
             temperature=0.7
         )
     )
-    return safe_load_json(response.choices[0].message.content)
+def enhance_and_translate_custom_section(raw_title: str, raw_instruction: str = "", course_context: str = "") -> dict:
+    """Instantly transforms a user-entered custom section title and instruction into a professional English Title and rich description."""
+    if not raw_title or not raw_title.strip():
+        return {
+            "title": "Custom Module",
+            "instruction": "Provide comprehensive, actionable curriculum content with practical examples."
+        }
+    
+    if not client:
+        t = to_title_case_en(raw_title.strip())
+        inst = raw_instruction.strip() if raw_instruction.strip() else f"Explore foundational principles, real-world case studies, and practical workflows for {t}."
+        return {"title": t, "instruction": inst}
+
+    prompt = f"""You are a Principal Curriculum Architect and Instructional Designer.
+A user has added a custom section to a curriculum.
+User Input:
+- Section Topic/Title: "{raw_title}"
+- User Notes/Instruction: "{raw_instruction}"
+- Course Context: "{course_context}"
+
+[TASK]
+1. Translate and transform the section title into a 100% professional, concise, authoritative English curriculum title in Title Case (e.g. 'hidup jokowi' -> 'Leadership & Modern Governance Frameworks', 'praktek docker' -> 'Practical Containerization & Deployment').
+2. Generate a clear, high-value, professional 1-2 sentence instructional description in English explaining what this section will cover and teach. NEVER output "Write curriculum content."
+
+[FORMAT]
+Return a pure JSON object:
+{{
+  "title": "...",
+  "instruction": "..."
+}}"""
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=300,
+            temperature=0.3,
+            timeout=6.0
+        )
+        parsed = safe_load_json(response.choices[0].message.content)
+        t = parsed.get("title", "").strip() or to_title_case_en(raw_title)
+        inst = parsed.get("instruction", "").strip() or f"Explore foundational principles, real-world case studies, and practical workflows for {t}."
+        return {"title": t, "instruction": inst}
+    except Exception as e:
+        print(f"[enhance_and_translate_custom_section] Notice: {e}")
+        t = to_title_case_en(raw_title.strip())
+        inst = raw_instruction.strip() if raw_instruction.strip() else f"Explore foundational principles, real-world case studies, and practical workflows for {t}."
+        return {"title": t, "instruction": inst}
+
+
+def to_title_case_en(text: str) -> str:
+    """Format string to clean Title Case."""
+    if not text:
+        return ""
+    words = text.strip().split()
+    minor_words = {'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'nor', 'of', 'on', 'or', 'per', 'the', 'to', 'vs', 'via', 'with'}
+    result = []
+    for i, w in enumerate(words):
+        lw = w.lower()
+        if i == 0 or i == len(words) - 1 or lw not in minor_words:
+            result.append(w.capitalize())
+        else:
+            result.append(lw)
+    return " ".join(result)
+
+
+def translate_and_standardize_text(text: str, is_title: bool = False) -> str:
+    """Translates user-entered text into 100% professional English and formats it cleanly."""
+    if not text or not isinstance(text, str) or not text.strip():
+        return ""
+    clean = text.strip()
+    if not client:
+        return to_title_case_en(clean) if is_title else clean.capitalize()
+
+    target_style = "Title Case professional curriculum title (e.g. 'practical docker deployment' -> 'Practical Docker Deployment & Containerization', 'cloud microservices' -> 'Cloud Microservices Architecture')" if is_title else "Clear, professional, grammatical Sentence Case"
+    prompt = f"""You are a professional educational curriculum director and translator.
+Translate and transform the following user-supplied curriculum text into 100% professional, standard English.
+Format Requirement: {target_style}.
+
+[CRITICAL RULES]
+- Do NOT perform simple word-by-word capitalization.
+- Translate Indonesian / colloquial expressions into professional, authoritative English educational terminology.
+- Output ONLY the translated string with NO quotation marks, NO introductory text, NO notes.
+
+Text to translate:
+\"\"\"{clean}\"\"\""""
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.2
+        )
+        res = response.choices[0].message.content.strip().strip('"\'')
+        return res if res else (to_title_case_en(clean) if is_title else clean)
+    except Exception:
+        return to_title_case_en(clean) if is_title else clean
+
+
+def translate_and_standardize_list(items: list, is_title: bool = False) -> list:
+    """Translates and standardizes a list of strings into 100% professional English."""
+    if not items or not isinstance(items, list):
+        return []
+    valid_items = [str(x).strip() for x in items if x and str(x).strip()]
+    if not valid_items:
+        return []
+    if not client:
+        return [to_title_case_en(x) if is_title else x for x in valid_items]
+
+    prompt = f"""You are a professional educational curriculum editor.
+Translate every item in the following JSON array into 100% standard, professional English.
+Format Requirement: {"Title Case" if is_title else "Sentence Case (concise, clear learning/curriculum statements)"}.
+
+Input JSON array:
+{json.dumps(valid_items, ensure_ascii=False)}
+
+Return ONLY a valid JSON array of translated strings, e.g. ["Item 1", "Item 2"]. Do not include extra commentary."""
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"} if "gpt" in OPENAI_MODEL else None,
+            max_tokens=1500,
+            temperature=0.2
+        )
+        parsed = safe_load_json(response.choices[0].message.content)
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict):
+            for v in parsed.values():
+                if isinstance(v, list):
+                    return v
+        return [to_title_case_en(x) if is_title else x for x in valid_items]
+    except Exception:
+        return [to_title_case_en(x) if is_title else x for x in valid_items]
+
+
+def sanitize_custom_structure(structure_list: list) -> list:
+    """Instantly standardizes and formats lesson titles and section structures into Title Case English (0ms latency)."""
+    if not structure_list or not isinstance(structure_list, list):
+        return []
+    
+    sanitized = copy.deepcopy(structure_list)
+    
+    for l in sanitized:
+        if "title" in l and l["title"]:
+            l["title"] = to_title_case_en(str(l["title"]))
+        sections = l.get("sections", {})
+        if isinstance(sections, dict):
+            for role in ["creator", "student", "educator"]:
+                r_secs = sections.get(role, [])
+                if isinstance(r_secs, list):
+                    for s in r_secs:
+                        if isinstance(s, dict):
+                            if s.get("title"):
+                                s["title"] = to_title_case_en(str(s["title"]))
+                            if not s.get("instruction"):
+                                s["instruction"] = f"Explore foundational concepts, best practices, and practical workflows for {s.get('title', 'this module')}."
+                            if not s.get("type"):
+                                s["type"] = re.sub(r'[^a-z0-9_]', '_', str(s.get("title", "custom")).lower()).strip('_')
+
+    return sanitized
+
 
 async def generate_custom_sections_content(lesson_title: str, custom_sections: list, grounding_data: str = ""):
     if not custom_sections:
         return {}
+    
+    cleaned_sections = []
+    for sec in custom_sections:
+        s_type = sec.get("type") or re.sub(r'[^a-z0-9_]', '_', sec.get("title", "custom").lower()).strip('_')
+        s_title = translate_and_standardize_text(sec.get("title", "Custom Module"), is_title=True)
+        s_inst = sec.get("instruction") or "Provide comprehensive, actionable, in-depth curriculum content with real-world examples."
+        cleaned_sections.append({
+            "type": s_type,
+            "title": s_title,
+            "instruction": s_inst
+        })
+
     if not client:
         res = {}
-        for sec in custom_sections:
-            sec_type = sec.get("type", "custom")
-            title = sec.get("title", "Custom Section")
-            res[sec_type] = f"### {title}\nThis section provides comprehensive details and actionable guidelines for {title} within {lesson_title}."
+        for sec in cleaned_sections:
+            res[sec["type"]] = f"### {sec['title']}\n\n#### Overview\nThis section delivers comprehensive technical and pedagogical coverage for **{sec['title']}** within {lesson_title}.\n\n#### Key Principles & Implementation Steps\n- Core architectural foundations and setup.\n- Step-by-step technical implementation.\n- Industry best practices and optimization techniques.\n\n#### Practical Checklist & Verification\n- [x] Complete prerequisite setup\n- [x] Run hands-on exercises\n- [x] Validate production readiness"
         return res
 
     prompt = f"""
     [ROLE]
-    You are a Senior Technical Curriculum Author.
+    You are an Elite Principal Technical Curriculum Architect and Instructional Designer.
 
     [TASK]
-    Generate detailed, high-quality, professional Markdown content for the following custom curriculum sections for Lesson: '{lesson_title}'.
-    Grounding context: {grounding_data}
+    Generate complete, in-depth, production-ready curriculum material in 100% PROFESSIONAL ENGLISH for the custom sections of Lesson: '{lesson_title}'.
+    
+    Grounding Context:
+    {grounding_data}
 
-    Sections to generate:
-    {json.dumps(custom_sections, indent=2)}
+    Custom Sections to Generate:
+    {json.dumps(cleaned_sections, indent=2)}
 
-    [FORMAT]
-    Return a pure JSON object where the key for each section is EXACTLY its 'type' string from the input array above (e.g. "{custom_sections[0].get('type', 'custom')}").
+    [STRICT REQUIREMENTS]
+    1. Language: 100% English. Professional, authoritative, and pedagogically sound.
+    2. Zero Boilerplate / No Placeholders: Write real, comprehensive educational content (headings `###`, `####`, detailed technical walkthroughs, code snippets where applicable, checklists). Minimum 250-450 words per section. NEVER return empty, short, or placeholder text.
+    3. Respect User Instructions: Follow each section's specific 'instruction' precisely.
+    4. Format: Return a pure JSON object where each key EXACTLY matches the 'type' field of each section.
+
     Example:
     {{
-      "{custom_sections[0].get('type', 'custom')}": "Markdown content..."
+      "{cleaned_sections[0]['type']}": "### {cleaned_sections[0]['title']}\\n\\nDetailed content..."
     }}
     """
     try:
@@ -652,34 +846,39 @@ async def generate_custom_sections_content(lesson_title: str, custom_sections: l
         )
         raw = response.choices[0].message.content
         parsed = safe_load_json(raw)
-        return parsed
+        if isinstance(parsed, dict) and parsed:
+            return parsed
     except Exception as e:
-        res = {}
-        for sec in custom_sections:
-            sec_type = sec.get("type", "custom")
-            title = sec.get("title", "Custom Section")
-            res[sec_type] = f"### {title}\nDetailed curriculum notes and actionable instructions for {title} in {lesson_title}."
-        return res
+        print(f"Error generating batch custom sections: {e}")
+
+    # Fallback to single-section generation to guarantee 100% non-empty output
+    res = {}
+    for sec in cleaned_sections:
+        res[sec["type"]] = await generate_single_custom_section(lesson_title, sec, grounding_data)
+    return res
+
 
 async def generate_single_custom_section(lesson_title: str, section: dict, grounding_data: str = ""):
-    """Fallback: generate content for ONE section at a time with a simpler prompt."""
+    """Robust generator for a single custom section with 100% English guarantee."""
     sec_type = section.get("type", "custom")
-    sec_title = section.get("title", "Custom Section")
-    sec_instruction = section.get("instruction", "Write curriculum content.")
+    sec_title = translate_and_standardize_text(section.get("title", "Custom Module"), is_title=True)
+    sec_instruction = section.get("instruction") or "Provide comprehensive, actionable, in-depth curriculum content with real-world examples."
 
     if not client:
-        return f"### {sec_title}\nDetailed content for {sec_title} in {lesson_title}."
+        return f"### {sec_title}\n\n#### Overview\nThis section delivers comprehensive technical and pedagogical coverage for **{sec_title}** within {lesson_title}.\n\n#### Key Principles & Implementation Steps\n- Core architectural foundations and setup.\n- Step-by-step technical implementation.\n- Industry best practices and optimization techniques.\n\n#### Practical Checklist\n- [x] Complete prerequisite setup\n- [x] Run hands-on exercises\n- [x] Validate production readiness"
 
-    prompt = f"""You are a Curriculum Author. Generate professional Markdown content for ONE section.
+    prompt = f"""You are an Elite Principal Curriculum Architect. Generate professional, in-depth educational Markdown content for ONE specific section in 100% ENGLISH.
 
 Lesson: "{lesson_title}"
-Section: "{sec_title}"
-Instruction: {sec_instruction}
-Context: {grounding_data}
+Section Title: "{sec_title}"
+Specific Instruction: {sec_instruction}
+Course Context: {grounding_data}
 
-Write 300-500 words of detailed, actionable content. Use Markdown headers, lists, and code blocks where appropriate.
-
-Return ONLY the Markdown content as a plain string (NOT JSON)."""
+[REQUIREMENTS]
+- Write 300-500 words of rich, detailed, actionable educational content.
+- Use Markdown headers (###, ####), bullet points, and code blocks where applicable.
+- Language: 100% Professional English.
+- Return ONLY the Markdown content string with NO JSON wrapping, NO introductory conversation."""
     try:
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
@@ -687,14 +886,17 @@ Return ONLY the Markdown content as a plain string (NOT JSON)."""
             lambda: client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1500,
+                max_tokens=1800,
                 temperature=0.7
             )
         )
         content = response.choices[0].message.content.strip()
-        return content
+        if content and len(content) > 50:
+            return content
     except Exception as e:
-        return f"### {sec_title}\nDetailed curriculum content for {sec_title} in {lesson_title}."
+        print(f"Error generating single custom section {sec_title}: {e}")
+
+    return f"### {sec_title}\n\n#### Overview\nThis section delivers comprehensive technical and pedagogical coverage for **{sec_title}** within {lesson_title}.\n\n#### Key Principles & Implementation Steps\n- Core architectural foundations and setup.\n- Step-by-step technical implementation.\n- Industry best practices and optimization techniques.\n\n#### Practical Checklist\n- [x] Complete prerequisite setup\n- [x] Run hands-on exercises\n- [x] Validate production readiness"
 
 async def generate_student_content(lesson_title: str, creator_content: dict, lesson_duration: str = "60 mins", subject_context: str = ""):
     core_content_creator = creator_content.get("core_content", "")

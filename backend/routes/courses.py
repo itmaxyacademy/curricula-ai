@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import uuid
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -12,31 +13,82 @@ from models import Session as DbSession, Course, Lesson, Section, Pptx, History
 import schemas
 import pipeline
 from services.progress_service import progress_publisher
-from services.generator_service import generate_course_content_task_async, cancel_session
+from services.generator_service import (
+    generate_course_content_task_async,
+    generate_course_content_task,
+    cancel_session,
+    uncancel_session,
+    ACTIVE_TASKS
+)
 
 
-def parse_duration_to_minutes(duration_str) -> int:
-    """Parse duration string from AI to minutes integer.
-    Examples: "30 minutes" -> 30, "1 hour" -> 60, "2 weeks" -> 20160
+def parse_duration_to_minutes(duration_str, lesson_count: int = None) -> int:
+    """Parse duration string from AI to a sensible per-lesson minutes integer (5 - 180 min).
+    Supports:
+    - "30 minutes" -> 30
+    - "1 hour" -> 60
+    - "2 lesson = 60 menit" -> 30 min/lesson
+    - "60 menit total untuk 2 lesson" -> 30 min/lesson
+    - "3 weeks" -> 60 min/lesson
     """
     if not duration_str:
         return 60
-    match = re.search(r'(\d+)', str(duration_str))
+    duration_lower = str(duration_str).lower()
+
+    if any(unit in duration_lower for unit in ['week', 'month', 'semester', 'year', 'day']):
+        return 60
+
+    # Pattern: "2 lesson = 60 menit" / "2 modul = 1 jam"
+    match_l_first = re.search(r'(\d+)\s*(?:lesson|pelajaran|modul|materi)[^\d]+?(\d+)\s*(?:menit|min|minutes?|jam|hours?|hrs?)', duration_lower)
+    if match_l_first:
+        l_count = int(match_l_first.group(1))
+        dur_val = int(match_l_first.group(2))
+        if any(h in duration_lower for h in ['jam', 'hour', 'hr']):
+            dur_val *= 60
+        if l_count > 0:
+            return max(5, min(180, round(dur_val / l_count)))
+
+    # Pattern: "60 menit total untuk 2 lesson"
+    match_t_first = re.search(r'(\d+)\s*(?:menit|min|minutes?|jam|hours?|hrs?)[^\d]+?(\d+)\s*(?:lesson|pelajaran|modul|materi)', duration_lower)
+    if match_t_first:
+        dur_val = int(match_t_first.group(1))
+        l_count = int(match_t_first.group(2))
+        if any(h in duration_lower for h in ['jam', 'hour', 'hr']):
+            dur_val *= 60
+        if l_count > 0:
+            return max(5, min(180, round(dur_val / l_count)))
+
+    match = re.search(r'(\d+)', duration_lower)
     if not match:
         return 60
     number = int(match.group(1))
-    duration_lower = str(duration_str).lower()
-    if 'hour' in duration_lower:
-        return number * 60
-    elif 'week' in duration_lower:
-        return number * 7 * 24 * 60
-    return number
+
+    if 'hour' in duration_lower or 'hr' in duration_lower or 'jam' in duration_lower:
+        minutes = number * 60
+    else:
+        minutes = number
+
+    if ('total' in duration_lower or 'overall' in duration_lower) and lesson_count and lesson_count > 1:
+        minutes = round(minutes / lesson_count)
+
+    return max(5, min(180, minutes))
 
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
 
 @router.get("/sessions/{session_id}/stream-progress")
-async def stream_progress(session_id: str):
+async def stream_progress(session_id: str, background_tasks: BackgroundTasks):
+    # Auto-resume background generation if server was restarted and session is in generating state
+    if session_id not in ACTIVE_TASKS:
+        db = SessionLocal()
+        try:
+            db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+            if db_session and db_session.status in ["generating", "queued"]:
+                uncancel_session(session_id)
+                background_tasks.add_task(generate_course_content_task_async, session_id)
+        finally:
+            db.close()
+
     async def event_generator():
         q = progress_publisher.subscribe(session_id)
         db = SessionLocal()
@@ -57,7 +109,7 @@ async def stream_progress(session_id: str):
             while True:
                 data = await q.get()
                 yield f"data: {json.dumps(data)}\n\n"
-                if data.get("status") in ["completed", "error"]:
+                if data.get("status") in ["completed", "error", "canceled"]:
                     break
         except asyncio.CancelledError:
             pass
@@ -67,9 +119,31 @@ async def stream_progress(session_id: str):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@router.get("/sessions/{session_id}/progress")
+def get_session_progress(session_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Auto-resume if in generating state but not active
+    if db_session.status in ["generating", "queued"] and session_id not in ACTIVE_TASKS:
+        uncancel_session(session_id)
+        background_tasks.add_task(generate_course_content_task_async, session_id)
+
+    return {
+        "session_id": db_session.id,
+        "progress": db_session.progress,
+        "status": db_session.status,
+        "status_text": db_session.status_text,
+        "step": db_session.step
+    }
+
+
 @router.get("/sessions")
 def list_sessions(db: Session = Depends(get_db)):
-    sessions = db.query(DbSession).order_by(DbSession.id.desc()).all()
+    sessions = db.query(DbSession).all()
+    # Sort with newest created course on top
+    sessions.sort(key=lambda s: getattr(s, "created_at", None) or "", reverse=True)
     result = []
     for s in sessions:
         course = db.query(Course).filter(Course.id == s.id).first()
@@ -93,7 +167,8 @@ def list_sessions(db: Session = Depends(get_db)):
             "progress": s.progress,
             "difficulty": s.config_difficulty,
             "audience": s.config_audience,
-            "tech_tags": tags
+            "tech_tags": tags,
+            "created_at": getattr(s, "created_at", None)
         })
     return result
 
@@ -114,6 +189,7 @@ def create_session(input_data: schemas.KeywordInput, db: Session = Depends(get_d
 
     db_session = DbSession(
         id=session_id,
+        created_at=datetime.utcnow().isoformat(),
         step="context",
         prompt=input_data.keyword,
         tech_tags=json.dumps(tech_tags),
@@ -122,6 +198,7 @@ def create_session(input_data: schemas.KeywordInput, db: Session = Depends(get_d
         learning_outcomes=json.dumps(grounding.get("learning_outcomes", [])),
         config_audience=grounding.get("target_audience", "Student"),
         subject_context=ai_result.get("subject_context", ""),
+        all_suggested_tags=json.dumps(all_suggested_tags),
         status="idle",
         progress=0
     )
@@ -151,7 +228,7 @@ def create_session(input_data: schemas.KeywordInput, db: Session = Depends(get_d
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str, db: Session = Depends(get_db)):
+async def get_session(session_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -175,6 +252,20 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
                 "sections": sections_data
             })
 
+    # Auto-complete or auto-resume if session is in 'generating' status without active background task
+    if db_session.status == "generating" and session_id not in ACTIVE_TASKS:
+        expected_count = len(json.loads(db_session.structure)) if db_session.structure else 1
+        if len(lessons_data) >= expected_count and all(len(l.get("sections", {})) >= 3 for l in lessons_data):
+            db_session.status = "completed"
+            db_session.progress = 100
+            db_session.status_text = "Course Generation Completed!"
+            db_session.step = "generated"
+            db.commit()
+        else:
+            # Automatically resume background generation task safely on main event loop
+            uncancel_session(session_id)
+            background_tasks.add_task(generate_course_content_task_async, session_id)
+
     pptx_by_lesson = {}
     if course:
         lesson_ids = [l.id for l in course.lessons]
@@ -188,7 +279,11 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
 
     course_title = course.title if course else (db_session.prompt or "Untitled Course")
     loaded_tech_tags = json.loads(db_session.tech_tags) if db_session.tech_tags else []
-    all_suggested = pipeline.get_default_candidate_tags(db_session.prompt, loaded_tech_tags)
+    try:
+        saved_suggested = json.loads(db_session.all_suggested_tags) if db_session.all_suggested_tags else []
+    except Exception:
+        saved_suggested = []
+    all_suggested = saved_suggested if saved_suggested and len(saved_suggested) > 0 else pipeline.get_default_candidate_tags(db_session.prompt, loaded_tech_tags)
 
     return {
         "session_id": db_session.id,
@@ -255,10 +350,14 @@ def save_grounding(session_id: str, grounding_data: schemas.GroundingInput, db: 
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    sanitized_prereqs = pipeline.translate_and_standardize_list(grounding_data.prerequisites, is_title=False)
+    sanitized_boundaries = pipeline.translate_and_standardize_list(grounding_data.out_of_scope, is_title=False)
+    sanitized_outcomes = pipeline.translate_and_standardize_list(grounding_data.learning_outcomes, is_title=False)
+
     db_session.tech_tags = json.dumps(grounding_data.tech_tags)
-    db_session.prerequisites = json.dumps(grounding_data.prerequisites)
-    db_session.boundaries = json.dumps(grounding_data.out_of_scope)
-    db_session.learning_outcomes = json.dumps(grounding_data.learning_outcomes)
+    db_session.prerequisites = json.dumps(sanitized_prereqs)
+    db_session.boundaries = json.dumps(sanitized_boundaries)
+    db_session.learning_outcomes = json.dumps(sanitized_outcomes)
     db_session.config_audience = grounding_data.target_audience
     
     # Strip any raw metadata headers (like [DOMAIN:...], [TOOLS REQUIRED:...]) from subject_context
@@ -269,7 +368,29 @@ def save_grounding(session_id: str, grounding_data: schemas.GroundingInput, db: 
     db_session.step = "proposal"
     db.commit()
 
-    return {"message": "Grounding saved successfully", "step": db_session.step}
+    return {
+        "message": "Grounding saved successfully",
+        "step": db_session.step,
+        "prerequisites": sanitized_prereqs,
+        "out_of_scope": sanitized_boundaries,
+        "learning_outcomes": sanitized_outcomes
+    }
+
+
+@router.post("/sections/ai-enhance")
+def enhance_custom_section_api(payload: dict, db: Session = Depends(get_db)):
+    raw_title = payload.get("title", "")
+    raw_inst = payload.get("instruction", "")
+    session_id = payload.get("session_id", "")
+
+    ctx = ""
+    if session_id:
+        db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+        if db_session:
+            ctx = f"{db_session.prompt or ''} - {db_session.subject_context or ''}"
+
+    enhanced = pipeline.enhance_and_translate_custom_section(raw_title, raw_inst, ctx)
+    return enhanced
 
 
 @router.post("/sessions/{session_id}/grounding/suggest")
@@ -302,7 +423,8 @@ def update_config(session_id: str, config_data: schemas.CourseConfigUpdate, db: 
     db_session.config_audience = config_data.target_audience
     db_session.subject_context = config_data.subject_context
     if config_data.tech_tags is not None:
-        db_session.tech_tags = json.dumps(config_data.tech_tags)
+        sanitized_tags = [pipeline.to_title_case_en(str(t).strip()) for t in config_data.tech_tags if t and str(t).strip()]
+        db_session.tech_tags = json.dumps(sanitized_tags)
     db.commit()
 
     return {"message": "Config updated successfully"}
@@ -413,11 +535,12 @@ def save_structure(session_id: str, payload: schemas.StructureUpdate, db: Sessio
             lesson_dict["sections"] = l.sections
         structure_list.append(lesson_dict)
 
-    db_session.structure = json.dumps(structure_list)
+    sanitized_structure = pipeline.sanitize_custom_structure(structure_list)
+    db_session.structure = json.dumps(sanitized_structure)
     db_session.step = "review"
     db.commit()
 
-    return {"message": "Structure saved successfully", "step": db_session.step}
+    return {"message": "Structure saved successfully", "step": db_session.step, "structure": sanitized_structure}
 
 
 @router.post("/sessions/{session_id}/content/generate")
@@ -426,13 +549,47 @@ async def trigger_generation(session_id: str, background_tasks: BackgroundTasks,
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    db_session.status = "queued"
-    db_session.progress = 5
-    db_session.status_text = "Generation queued..."
+    # Clear any previous cancellation state immediately
+    uncancel_session(session_id)
+
+    db_session.status = "generating"
+    db_session.step = "generating"
+    if not db_session.progress or db_session.progress < 10:
+        db_session.progress = 10
+    db_session.status_text = "Generation starting..."
     db.commit()
 
+    await progress_publisher.publish(session_id, {
+        "progress": db_session.progress,
+        "status": "generating",
+        "status_text": db_session.status_text,
+        "step": "generating"
+    })
+
     background_tasks.add_task(generate_course_content_task_async, session_id)
-    return {"message": "Generation started", "status": "queued"}
+    return {"message": "Generation started", "status": "generating"}
+
+
+@router.post("/sessions/{session_id}/pause")
+async def pause_generation(session_id: str, db: Session = Depends(get_db)):
+    # Immediately trigger in-memory pause flag
+    cancel_session(session_id)
+    
+    try:
+        db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+        if db_session:
+            db_session.status = "paused"
+            db_session.step = "generating"
+            db_session.status_text = "Generation paused by user."
+            db.commit()
+    except Exception as e:
+        print(f"[Pause Warning] Database update deferred: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    return {"status": "paused"}
 
 
 @router.post("/sessions/{session_id}/cancel")
@@ -463,3 +620,27 @@ async def cancel_generation(session_id: str, db: Session = Depends(get_db)):
             pass
 
     return {"status": "canceled"}
+
+
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: str, db: Session = Depends(get_db)):
+    db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        # Delete related PPTX records if any
+        course = db.query(Course).filter(Course.id == session_id).first()
+        if course:
+            lesson_ids = [l.id for l in course.lessons]
+            if lesson_ids:
+                db.query(Pptx).filter(Pptx.lesson_id.in_(lesson_ids)).delete(synchronize_session=False)
+            db.delete(course)
+
+        db.delete(db_session)
+        db.commit()
+        return {"message": "Course session deleted successfully", "session_id": session_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete session: {str(e)}")
+
