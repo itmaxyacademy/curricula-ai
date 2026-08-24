@@ -73,22 +73,29 @@ export function Step7Generating({
     const onScroll = () => {
       if (!ticking) {
         window.requestAnimationFrame(() => {
-          const HEADER_OFFSET = 140;
+          // Trigger when section top enters halfway up the screen (approx 45% of viewport)
+          const TRIGGER_OFFSET = Math.max(160, window.innerHeight * 0.45);
           const elements = secIds
             .map(id => ({ id, el: document.getElementById(`step7-sec-${id}`) }))
             .filter(item => Boolean(item.el));
 
           if (elements.length > 0) {
-            let activeId = elements[0].id;
-            for (let i = 0; i < elements.length; i++) {
-              const rect = elements[i].el.getBoundingClientRect();
-              if (rect.top <= HEADER_OFFSET) {
-                activeId = elements[i].id;
-              } else {
-                break;
+            // Check if user is scrolled near the bottom of the page
+            const isBottom = window.innerHeight + window.scrollY >= (document.documentElement.scrollHeight - 60);
+            if (isBottom) {
+              setActiveSubSection(elements[elements.length - 1].id);
+            } else {
+              let activeId = elements[0].id;
+              for (let i = 0; i < elements.length; i++) {
+                const rect = elements[i].el.getBoundingClientRect();
+                if (rect.top <= TRIGGER_OFFSET) {
+                  activeId = elements[i].id;
+                } else {
+                  break;
+                }
               }
+              setActiveSubSection(activeId);
             }
-            setActiveSubSection(activeId);
           }
           ticking = false;
         });
@@ -465,7 +472,18 @@ export function Step7Generating({
                 <button
                   key={sec.id}
                   className={`filter-nav-item ${activeSubSection === sec.id ? 'active' : ''}`}
-                  style={{ textAlign: 'left', padding: '10px 14px', fontSize: '0.85rem', transition: 'all 0.2s ease' }}
+                  style={{
+                    textAlign: 'left',
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                    transition: 'all 0.2s ease',
+                    width: '100%',
+                    height: 'auto',
+                    minHeight: '38px',
+                    justifyContent: 'flex-start',
+                    display: 'flex',
+                    alignItems: 'flex-start'
+                  }}
                   onClick={() => {
                     setActiveSubSection(sec.id);
                     const el = document.getElementById(`step7-sec-${sec.id}`);
@@ -474,9 +492,9 @@ export function Step7Generating({
                     }
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span>{sec.title}</span>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', width: '100%' }}>
+                    <svg style={{ flexShrink: 0, marginTop: '2px' }} width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span style={{ wordBreak: 'break-word', lineHeight: '1.35', flex: 1 }}>{sec.title}</span>
                   </div>
                 </button>
               ));

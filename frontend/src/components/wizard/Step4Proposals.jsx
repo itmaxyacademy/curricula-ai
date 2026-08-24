@@ -6,7 +6,9 @@ export function Step4Proposals({
   selectedProposalId,
   handleSelectProposal,
   isLoading,
-  setCurrentStep
+  setCurrentStep,
+  handleJumpToReview,
+  canJumpToReview = false
 }) {
   return (
     <div>
@@ -100,7 +102,12 @@ export function Step4Proposals({
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '30px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <button className="file-upload-btn" onClick={() => setCurrentStep('grounding')}>← Back to Grounding</button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="file-upload-btn" onClick={() => setCurrentStep('grounding')}>← Back to Grounding</button>
+          {canJumpToReview && (
+            <button className="file-upload-btn" style={{ borderColor: 'var(--gold)', color: 'var(--gold)' }} onClick={handleJumpToReview} disabled={isLoading}>Jump to Review</button>
+          )}
+        </div>
         <button 
           className="action-btn"
           disabled={!selectedProposalId || isLoading}

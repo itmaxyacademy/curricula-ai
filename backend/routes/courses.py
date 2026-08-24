@@ -338,10 +338,16 @@ def update_session_status(session_id: str, payload: dict, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Session not found")
 
     new_status = payload.get("status")
+    new_step = payload.get("step")
+    new_progress = payload.get("progress")
     if new_status:
         db_session.status = new_status
-        db.commit()
-    return {"message": "Status updated successfully", "status": db_session.status}
+    if new_step:
+        db_session.step = new_step
+    if new_progress is not None:
+        db_session.progress = new_progress
+    db.commit()
+    return {"message": "Session updated successfully", "status": db_session.status, "step": db_session.step, "progress": db_session.progress}
 
 
 @router.post("/sessions/{session_id}/grounding")
@@ -425,9 +431,11 @@ def update_config(session_id: str, config_data: schemas.CourseConfigUpdate, db: 
     if config_data.tech_tags is not None:
         sanitized_tags = [pipeline.to_title_case_en(str(t).strip()) for t in config_data.tech_tags if t and str(t).strip()]
         db_session.tech_tags = json.dumps(sanitized_tags)
+    if db_session.step in ["context", "prompt", "dashboard", None]:
+        db_session.step = "grounding"
     db.commit()
 
-    return {"message": "Config updated successfully"}
+    return {"message": "Config updated successfully", "step": db_session.step}
 
 
 @router.post("/sessions/{session_id}/grounding/refresh")

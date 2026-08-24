@@ -10,6 +10,7 @@ export function Navbar({
   setShowUserDropdown,
   setShowMyCourses,
   sessionId,
+  generationProgress = 0,
   currentStep,
   setCurrentStep,
   API_BASE,
@@ -42,14 +43,18 @@ export function Navbar({
         </button>
         <button 
           className={`header-tab-btn ${currentView === 'home' ? 'active' : ''}`}
-          onClick={() => requireAuth('home', () => { setCurrentView('home'); setShowMyCourses(false); })}
+          onClick={() => requireAuth('home', () => { 
+            setCurrentView('home'); 
+            setShowMyCourses(false); 
+            if (fetchSessions) fetchSessions();
+          })}
         >
           Home
         </button>
         <button 
           className={`header-tab-btn ${currentView === 'courses' ? 'active' : ''}`}
           onClick={() => requireAuth('courses', () => { 
-            if (currentStep === 'generating' && sessionId && API_BASE) {
+            if (currentStep === 'generating' && generationProgress < 100 && sessionId && API_BASE) {
               fetch(`${API_BASE}/courses/sessions/${sessionId}/pause`, { method: 'POST' }).catch(() => {});
             }
             setCurrentView('courses'); 

@@ -182,6 +182,7 @@ export function WizardPage({ wizard, exports, currentStep, setCurrentStep, toast
               contextTextareaRef={wizard.contextTextareaRef}
               setCurrentStep={setCurrentStep}
               handleJumpToReview={wizard.handleJumpToReview}
+              canJumpToReview={wizard.canJumpFromConfig}
               handleGenerateProposals={wizard.handleGenerateProposals}
               isLoading={wizard.isLoading}
             />
@@ -199,6 +200,8 @@ export function WizardPage({ wizard, exports, currentStep, setCurrentStep, toast
               handleAutoSuggestGrounding={wizard.handleAutoSuggestGrounding}
               loadingField={wizard.loadingField}
               setCurrentStep={setCurrentStep}
+              handleJumpToReview={wizard.handleJumpToReview}
+              canJumpToReview={wizard.canJumpFromGrounding}
               handleSaveGrounding={wizard.handleSaveGrounding}
               isLoading={wizard.isLoading}
             />
@@ -212,6 +215,8 @@ export function WizardPage({ wizard, exports, currentStep, setCurrentStep, toast
               handleSelectProposal={wizard.handleSelectProposal}
               isLoading={wizard.isLoading}
               setCurrentStep={setCurrentStep}
+              handleJumpToReview={wizard.handleJumpToReview}
+              canJumpToReview={wizard.canJumpFromProposal}
             />
           )}
 
@@ -247,6 +252,8 @@ export function WizardPage({ wizard, exports, currentStep, setCurrentStep, toast
               sessionId={wizard.sessionId}
               API_BASE={API_BASE}
               setCurrentStep={setCurrentStep}
+              handleJumpToReview={wizard.handleJumpToReview}
+              canJumpToReview={wizard.canJumpFromStructure}
               isLoading={wizard.isLoading}
               setIsLoading={wizard.setIsLoading}
               toast={toast}

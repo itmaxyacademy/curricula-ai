@@ -31,6 +31,8 @@ export function Step5Structure({
   sessionId,
   API_BASE,
   setCurrentStep,
+  handleJumpToReview,
+  canJumpToReview = false,
   isLoading,
   setIsLoading,
   toast
@@ -381,7 +383,12 @@ export function Step5Structure({
 
       {/* Bottom Actions for Step 5 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <button className="file-upload-btn" onClick={() => setCurrentStep('proposal')}>← Back to Proposals</button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="file-upload-btn" onClick={() => setCurrentStep('proposal')}>← Back to Proposals</button>
+          {canJumpToReview && (
+            <button className="file-upload-btn" style={{ borderColor: 'var(--gold)', color: 'var(--gold)' }} onClick={handleJumpToReview} disabled={isLoading}>Jump to Review</button>
+          )}
+        </div>
         <button 
           className="action-btn" 
           onClick={async () => {

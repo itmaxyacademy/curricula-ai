@@ -176,6 +176,9 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
   const [proposals, setProposals] = useState([]);
   const [selectedProposalId, setSelectedProposalId] = useState(null);
   const [lastSavedConfigHash, setLastSavedConfigHash] = useState(null);
+  const [lastSavedGroundingHash, setLastSavedGroundingHash] = useState(null);
+  const [lastSavedProposalId, setLastSavedProposalId] = useState(null);
+  const [lastSavedStructureHash, setLastSavedStructureHash] = useState(null);
 
   // ── Structure ──
   const [structure, setStructure] = useState([]);
@@ -210,6 +213,34 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
   const [isAIWandOpen, setIsAIWandOpen] = useState(false);
   const [isWandProcessing, setIsWandProcessing] = useState(false);
   const [loadingField, setLoadingField] = useState(null);
+
+  // ── Dirty State & Jump to Review Eligibility ──
+  const currentConfigHash = JSON.stringify({
+    techTags: Array.from(new Set(techTags || [])).sort(),
+    configDifficulty,
+    configAudience,
+    configLessons: Number(configLessons),
+    configDuration: Number(configDuration),
+    subjectContext: (subjectContext || '').trim().replace(/\s+/g, ' '),
+  });
+  const isConfigDirty = lastSavedConfigHash !== null && lastSavedConfigHash !== currentConfigHash;
+  const canJumpFromConfig = !isConfigDirty && structure.length > 0 && selectedProposalId !== null;
+
+  const currentGroundingHash = JSON.stringify({
+    techTags: Array.from(new Set(techTags || [])).sort(),
+    prerequisites: (prerequisites || []).map(p => (typeof p === 'string' ? p.trim() : p)),
+    boundaries: (boundaries || []).map(b => (typeof b === 'string' ? b.trim() : b)),
+    learningOutcomes: (learningOutcomes || []).map(o => (typeof o === 'string' ? o.trim() : o)),
+  });
+  const isGroundingDirty = lastSavedGroundingHash !== null && lastSavedGroundingHash !== currentGroundingHash;
+  const canJumpFromGrounding = !isGroundingDirty && structure.length > 0 && selectedProposalId !== null;
+
+  const isProposalDirty = lastSavedProposalId !== null && selectedProposalId !== lastSavedProposalId;
+  const canJumpFromProposal = !isProposalDirty && structure.length > 0 && selectedProposalId !== null;
+
+  const currentStructureHash = JSON.stringify(structure || []);
+  const isStructureDirty = lastSavedStructureHash !== null && lastSavedStructureHash !== currentStructureHash;
+  const canJumpFromStructure = !isStructureDirty && structure.length > 0;
 
   const checkCanEdit = (actionName = 'this action') => {
     if (generationProgress < 100) {
@@ -412,6 +443,24 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
       if (fallbackInterval) clearInterval(fallbackInterval);
     };
   }, [currentStep, sessionId, activeLessonId, fetchSessions, setCurrentStep, toast]);
+
+  // ── Auto-Sync current wizard step to backend session and refresh Course Library ──
+  useEffect(() => {
+    if (!sessionId || currentStep === 'dashboard') return;
+    
+    const syncStepToBackend = async () => {
+      try {
+        await fetch(`${API_BASE}/courses/sessions/${sessionId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step: currentStep })
+        });
+        fetchSessions();
+      } catch { /* ignore */ }
+    };
+
+    syncStepToBackend();
+  }, [currentStep, sessionId, API_BASE, fetchSessions]);
 
   // ── File upload refs & handlers ──
   const fileInputRef = useRef(null);
@@ -865,72 +914,9 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     }
   };
 
-  const handleJumpToReview = async () => {
+  const handleJumpToReview = () => {
     if (!sessionId) return;
-    // Fix 1: If proposals & structure already exist, skip regeneration and go directly to review
-    if (proposals.length > 0 && structure.length > 0) {
-      setCurrentStep('review');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await fetch(`${API_BASE}/courses/sessions/${sessionId}/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lessons_count: configLessons,
-          duration: configDuration,
-          difficulty: configDifficulty,
-          target_audience: configAudience,
-          subject_context: subjectContext,
-        }),
-      });
-
-      const propRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/proposals/generate`, {
-        method: 'POST',
-      });
-      if (!propRes.ok) throw new Error('Failed to generate proposals');
-      const propData = await propRes.json();
-      const firstProposalId = propData.proposals?.[0]?.id || 1;
-
-      const selRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/proposals/select`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selected_proposal_id: firstProposalId })
-      });
-      if (!selRes.ok) throw new Error('Failed to select proposal');
-      const selData = await selRes.json();
-
-      const structRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/structure/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lessons: selData.structure || [] })
-      });
-      if (!structRes.ok) throw new Error('Failed to save structure');
-
-      const sessRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}`);
-      if (sessRes.ok) {
-        const fullSess = await sessRes.json();
-        setPrerequisites(fullSess.prerequisites || []);
-        setBoundaries(fullSess.out_of_scope || []);
-        setLearningOutcomes(fullSess.learning_outcomes || []);
-        setProposals(fullSess.proposals || []);
-        setSelectedProposalId(fullSess.selected_proposal_id);
-        const newStruct = (fullSess.structure || []).map(lesson => ({
-          ...lesson,
-          sections: mergeSections(lesson.sections)
-        }));
-        setStructure(newStruct);
-      }
-
-      setCurrentStep('review');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to quickly prepare review: ' + err.message);
-    } finally {
-      setIsLoading(false);
-    }
+    setCurrentStep('review');
   };
 
   const handleResumeSession = async (sess, setPptxDataByLesson) => {
@@ -1193,6 +1179,7 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     resetWizardState,
     checkCanEdit, handleAIAction, handleSaveManualEdit,
     renderAIActionBar, renderCustomSections,
+    canJumpFromConfig, canJumpFromGrounding, canJumpFromProposal, canJumpFromStructure,
     fetchSessions
   };
 }

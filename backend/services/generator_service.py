@@ -156,6 +156,8 @@ async def generate_course_content_task_async(session_id: str):
                     lesson.structure_key = struct_key
                     changed = True
                 if changed:
+                    # Clear out old sections if title or identity changed
+                    db.query(Section).filter(Section.lesson_id == lesson.id).delete()
                     db.commit()
                     db.refresh(lesson)
 
@@ -163,7 +165,29 @@ async def generate_course_content_task_async(session_id: str):
             existing_creator = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "creator").count()
             existing_student = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "student").count()
             existing_educator = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "educator").count()
-            if existing_creator >= 3 and existing_student >= 2 and existing_educator >= 2:
+
+            # Check if any unlocked custom sections in the structure are missing
+            missing_custom = False
+            sections_dict = item.get("sections", {})
+            if isinstance(sections_dict, dict):
+                for r_name in ["creator", "student", "educator"]:
+                    r_sects = sections_dict.get(r_name, [])
+                    if isinstance(r_sects, list):
+                        for s in r_sects:
+                            if isinstance(s, dict) and not s.get("locked", False) and s.get("type"):
+                                sec_type = s.get("type")
+                                has_sec = db.query(Section).filter(
+                                    Section.lesson_id == lesson.id,
+                                    Section.role == r_name,
+                                    Section.section_type == sec_type
+                                ).first()
+                                if not has_sec:
+                                    missing_custom = True
+                                    break
+                    if missing_custom:
+                        break
+
+            if not changed and not missing_custom and existing_creator >= 3 and existing_student >= 2 and existing_educator >= 2:
                 print(f"[Generator] Lesson {idx+1}/{total_lessons} already completed. Resuming to next lesson!")
                 continue
 

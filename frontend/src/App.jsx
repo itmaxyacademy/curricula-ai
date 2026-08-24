@@ -138,6 +138,7 @@ export default function App() {
         setUploadedFileName={wizard.setUploadedFileName}
         setPendingFile={wizard.setPendingFile}
         sessionId={wizard.sessionId}
+        generationProgress={wizard.generationProgress}
         currentStep={currentStep}
         setCurrentStep={setCurrentStep}
         API_BASE={API_BASE}

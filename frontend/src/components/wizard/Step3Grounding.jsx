@@ -11,6 +11,8 @@ export function Step3Grounding({
   handleAutoSuggestGrounding,
   loadingField,
   setCurrentStep,
+  handleJumpToReview,
+  canJumpToReview = false,
   handleSaveGrounding,
   isLoading
 }) {
@@ -210,7 +212,12 @@ export function Step3Grounding({
 
       {/* Bottom Actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <button className="file-upload-btn" onClick={() => setCurrentStep('context')}>← Back</button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="file-upload-btn" onClick={() => setCurrentStep('context')}>← Back</button>
+          {canJumpToReview && (
+            <button className="file-upload-btn" style={{ borderColor: 'var(--gold)', color: 'var(--gold)' }} onClick={handleJumpToReview} disabled={isLoading}>Jump to Review</button>
+          )}
+        </div>
         <button className="action-btn" onClick={handleSaveGrounding} disabled={isLoading}>
           {isLoading ? <><IconSpinner /> Generating Proposals…</> : <>Generate Proposals <IconArrow /></>}
         </button>
