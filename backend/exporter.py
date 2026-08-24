@@ -103,7 +103,7 @@ def format_section_content_to_md(content, indent: int = 0) -> list[str]:
     return lines
 
 def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
-    sections = lesson.get("sections", {}).get(role, {})
+    sections = (lesson.get("sections") or {}).get(role) or {}
     if sections and len(sections) > 0:
         return sections
         
@@ -154,11 +154,15 @@ def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
 
 def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dict) -> list:
     """Returns list of tuples: (clean_title, content_obj, sec_type) in the exact structure order configured by user."""
-    raw_sections = lesson.get("sections", {}).get(role, {})
+    # NOTE: use `or {}` after every .get() here, not just a default arg —
+    # a key that exists but is explicitly None (e.g. {"sections": None})
+    # would otherwise raise AttributeError on the next .get() and silently
+    # kick the whole PDF export into the plain legacy/ReportLab fallback.
+    raw_sections = (lesson.get("sections") or {}).get(role) or {}
     if not raw_sections:
         raw_sections = get_resolved_lesson_sections(lesson, role)
 
-    structures = course_data.get("structure", []) or []
+    structures = course_data.get("structure") or []
     lesson_id = lesson.get("id")
     lesson_title = clean_lesson_title(lesson.get("title", ""))
     
@@ -169,7 +173,7 @@ def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dic
            (s.get("order") and s.get("order") == lesson.get("order"))
     ), None)
 
-    ordered_defs = matching_struct.get("sections", {}).get(role, []) if matching_struct else []
+    ordered_defs = ((matching_struct or {}).get("sections") or {}).get(role) or []
 
     CANONICAL_LABELS = {
         "overview": "Lesson Overview",
@@ -203,7 +207,12 @@ def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dic
 
     if ordered_defs:
         for s_def in ordered_defs:
-            s_type = s_def.get("type")
+            if not s_def:
+                continue
+            # A section def missing "type" used to crash with
+            # AttributeError on `.replace(...)` below (None has no
+            # .replace), which silently triggered the ugly fallback PDF.
+            s_type = s_def.get("type") or s_def.get("id") or "custom_section"
             s_title = s_def.get("title") or CANONICAL_LABELS.get(s_type) or s_type.replace("custom_", "").replace("_", " ").title()
             
             # Find matching content in raw_sections
@@ -211,7 +220,7 @@ def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dic
             matched_key = s_type
             if content is None:
                 for k, v in raw_sections.items():
-                    if k.lower() == s_type.lower() or k == s_def.get("id"):
+                    if k.lower() == str(s_type).lower() or k == s_def.get("id"):
                         content = v
                         matched_key = k
                         break
@@ -560,6 +569,43 @@ def _render_section(section_type: str, content, custom_title: str = None) -> str
     return "\n".join(out)
 
 
+_LATEX_MARKERS = ('\\(', '\\)', '\\[', '\\]', '$$')
+
+
+def _contains_latex_math(text: str) -> bool:
+    """Detects raw LaTeX math delimiters (\\( \\) \\[ \\] $$ ) so we only pay
+    the cost of loading MathJax when a lesson actually contains a formula,
+    e.g. AI-generated content like "\\( w_{t+1} = w_t - \\eta \\nabla L(w_t) \\)"
+    that would otherwise print as unrendered raw text/backslashes in the PDF."""
+    return any(marker in text for marker in _LATEX_MARKERS)
+
+
+def _mathjax_head_snippet(body_html: str) -> str:
+    """Returns a <script> block that loads MathJax (via CDN) and configures
+    it to recognize \\( \\) and \\[ \\] / $$ $$ delimiters, so raw LaTeX
+    dropped into lesson content by the AI renders as real typeset math
+    instead of literal backslash-escaped text. Only included when the page
+    actually contains LaTeX markers, to avoid an unnecessary network fetch
+    (and the extra render wait) on ordinary lessons."""
+    if not _contains_latex_math(body_html):
+        return ""
+    return """
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['\\\\(', '\\\\)']],
+    displayMath: [['\\\\[', '\\\\]'], ['$$', '$$']]
+  },
+  svg: { fontCache: 'global' },
+  startup: {
+    typeset: true
+  }
+};
+</script>
+<script id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+"""
+
+
 def export_to_html_v2(course_data: dict, role: str) -> str:
     """New dark-theme, component-based HTML template matching the
     Maxy Academy / Curricula AI PDF design (cover, TOC, quiz cards,
@@ -650,12 +696,14 @@ def export_to_html_v2(course_data: dict, role: str) -> str:
     parts.append("\n".join(content_html))
 
     body = "\n".join(parts)
+    mathjax_html = _mathjax_head_snippet(body)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>{html_lib.escape(title)}</title>
 <style>{_TEMPLATE_CSS}</style>
+{mathjax_html}
 </head>
 <body>
 {body}
@@ -909,6 +957,34 @@ def md_to_reportlab_html(text: str) -> str:
     return s
 
 
+def _ensure_playwright_chromium_installed() -> bool:
+    """Best-effort auto-install of the Chromium browser Playwright needs.
+    The `playwright` pip package only ships the driver, not the browser
+    binaries — those must be downloaded separately via `playwright install`.
+    If they're missing, Chromium.launch() raises with a message containing
+    "Executable doesn't exist". We catch that case once and try to fix it
+    automatically instead of silently degrading to the messy fallback PDF."""
+    import subprocess
+    import sys
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            print(
+                "Auto-install of Playwright Chromium failed:\n"
+                f"{result.stderr.decode(errors='replace')}"
+            )
+            return False
+        return True
+    except Exception as e:
+        print(f"Auto-install of Playwright Chromium raised an exception: {e}")
+        return False
+
+
 def _render_pdf_with_playwright(html_content: str) -> bytes:
     """Renders HTML to PDF bytes using headless Chromium. This supports the
     full modern CSS the new template needs (flexbox, grid, gradients) which
@@ -918,6 +994,22 @@ def _render_pdf_with_playwright(html_content: str) -> bytes:
         try:
             page = browser.new_page()
             page.set_content(html_content, wait_until="networkidle")
+            # If the page loaded MathJax (only injected when the lesson
+            # actually contains raw LaTeX like \( w_t \)), wait for it to
+            # finish typesetting before printing — otherwise the PDF
+            # captures the raw "\( ... \)" text before MathJax replaces it
+            # with the rendered formula.
+            if "MathJax-script" in html_content:
+                try:
+                    page.wait_for_function(
+                        "() => window.MathJax && window.MathJax.startup "
+                        "&& window.MathJax.startup.document.state() >= 10",
+                        timeout=10000,
+                    )
+                except Exception:
+                    # CDN unreachable / MathJax failed to load — proceed
+                    # anyway rather than blocking the whole export.
+                    pass
             pdf_bytes = page.pdf(
                 format="A4",
                 print_background=True,
@@ -928,6 +1020,11 @@ def _render_pdf_with_playwright(html_content: str) -> bytes:
     return pdf_bytes
 
 
+# Module-level flag so we only attempt the (slow) auto-install once per
+# process, not on every single export request.
+_playwright_autoinstall_attempted = False
+
+
 def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
     html_content = export_to_html(course_data, role)
 
@@ -935,14 +1032,29 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
     #    this is what makes the dark-theme cover/TOC/quiz-card/table layout
     #    render correctly; wkhtmltopdf below cannot).
     if sync_playwright:
-        try:
-            pdf_bytes = _render_pdf_with_playwright(html_content)
-            out0 = io.BytesIO()
-            out0.write(pdf_bytes)
-            out0.seek(0)
-            return out0
-        except Exception as e:
-            print(f"Playwright PDF render failed, falling back to wkhtmltopdf/reportlab: {e}")
+        global _playwright_autoinstall_attempted
+        for attempt in range(2):
+            try:
+                pdf_bytes = _render_pdf_with_playwright(html_content)
+                out0 = io.BytesIO()
+                out0.write(pdf_bytes)
+                out0.seek(0)
+                return out0
+            except Exception as e:
+                err_text = str(e)
+                missing_browser = "Executable doesn't exist" in err_text or "playwright install" in err_text
+                if attempt == 0 and missing_browser and not _playwright_autoinstall_attempted:
+                    _playwright_autoinstall_attempted = True
+                    print(
+                        "Playwright's Chromium browser isn't installed yet — "
+                        "attempting one-time auto-install (`playwright install chromium`)..."
+                    )
+                    if _ensure_playwright_chromium_installed():
+                        print("Chromium installed successfully, retrying PDF render.")
+                        continue  # retry the render now that the browser exists
+                import traceback
+                print(f"Playwright PDF render failed, falling back to wkhtmltopdf/reportlab:\n{traceback.format_exc()}")
+                break
 
     # Fallback chain below uses the legacy light-theme renderer, since
     # wkhtmltopdf/reportlab can't render the new template's CSS reliably.

@@ -43,6 +43,13 @@ except Exception:
 
 try:
     with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE lessons ADD COLUMN structure_key VARCHAR(64)"))
+        conn.commit()
+except Exception:
+    pass
+
+try:
+    with engine.connect() as conn:
         dialect = engine.dialect.name
         if dialect == "mysql":
             result = conn.execute(text("SHOW TABLES LIKE 'pptx'"))

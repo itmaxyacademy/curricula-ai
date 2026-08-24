@@ -538,6 +538,51 @@ def save_structure(session_id: str, payload: schemas.StructureUpdate, db: Sessio
     sanitized_structure = pipeline.sanitize_custom_structure(structure_list)
     db_session.structure = json.dumps(sanitized_structure)
     db_session.step = "review"
+
+    # If this course has already been generated at least once, keep the
+    # already-created Lesson rows in sync with the (possibly reordered)
+    # blueprint immediately — not just at the next full generation run.
+    # Without this, reordering lessons after generation updates only the
+    # blueprint JSON, while `Lesson.position`/`title` in the database stay
+    # exactly as they were from the last generation, so exports (PDF, etc.)
+    # keep showing the old order until the course is regenerated.
+    course = db.query(Course).filter(Course.id == session_id).first()
+    if course:
+        current_keys = {str(item.get("id", i + 1)) for i, item in enumerate(sanitized_structure)}
+
+        # Drop lessons that were removed from the structure entirely.
+        stale_lessons = db.query(Lesson).filter(
+            Lesson.course_id == session_id,
+            Lesson.structure_key.isnot(None),
+            ~Lesson.structure_key.in_(current_keys)
+        ).all() if current_keys else []
+        for stale in stale_lessons:
+            db.delete(stale)
+
+        for idx, item in enumerate(sanitized_structure):
+            struct_key = str(item.get("id", idx + 1))
+            lesson = db.query(Lesson).filter(
+                Lesson.course_id == session_id,
+                Lesson.structure_key == struct_key
+            ).first()
+            # Legacy fallback for rows created before structure_key existed.
+            if not lesson:
+                lesson = db.query(Lesson).filter(
+                    Lesson.course_id == session_id,
+                    Lesson.structure_key.is_(None),
+                    Lesson.position == idx + 1
+                ).first()
+            if lesson:
+                if lesson.position != idx + 1:
+                    lesson.position = idx + 1
+                if lesson.title != item["title"]:
+                    lesson.title = item["title"]
+                if lesson.structure_key != struct_key:
+                    lesson.structure_key = struct_key
+            # If no matching Lesson row exists yet, it simply hasn't been
+            # generated yet — nothing to sync, the next generation run
+            # will create it with the correct position/structure_key.
+
     db.commit()
 
     return {"message": "Structure saved successfully", "step": db_session.step, "structure": sanitized_structure}
@@ -643,4 +688,3 @@ def delete_session(session_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete session: {str(e)}")
-

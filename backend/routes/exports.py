@@ -147,6 +147,7 @@ async def generate_pptx_endpoint(session_id: str, req_body: dict = None, db: Ses
         raise HTTPException(status_code=404, detail="Session not found")
 
     brand_colors = (req_body or {}).get("brand_colors", None)
+    role = ((req_body or {}).get("role") or "student").lower()
 
     lessons_data = []
     course = db.query(Course).filter(Course.id == session_id).first()
@@ -175,11 +176,12 @@ async def generate_pptx_endpoint(session_id: str, req_body: dict = None, db: Ses
             "difficulty": db_session.config_difficulty,
             "target_audience": db_session.config_audience,
         },
+        "structure": json.loads(db_session.structure) if (db_session and db_session.structure) else [],
         "subject_context": db_session.subject_context or "",
         "lessons": lessons_data
     }
 
-    pptx_structure = await pipeline.generate_pptx_structure(course_data, brand_colors)
+    pptx_structure = await pipeline.generate_pptx_structure(course_data, brand_colors, role)
     return pptx_structure
 
 
@@ -194,6 +196,7 @@ async def generate_lesson_pptx_endpoint(session_id: str, lesson_id: int, req_bod
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     brand_colors = (req_body or {}).get("brand_colors", None)
+    role = ((req_body or {}).get("role") or "student").lower()
 
     sections_data = {}
     for sec in lesson.sections:
@@ -220,11 +223,12 @@ async def generate_lesson_pptx_endpoint(session_id: str, lesson_id: int, req_bod
             "difficulty": db_session.config_difficulty,
             "target_audience": db_session.config_audience,
         },
+        "structure": json.loads(db_session.structure) if (db_session and db_session.structure) else [],
         "subject_context": db_session.subject_context or "",
         "lessons": [lesson_data]
     }
 
-    pptx_structure = await pipeline.generate_pptx_structure(course_data, brand_colors)
+    pptx_structure = await pipeline.generate_pptx_structure(course_data, brand_colors, role)
 
     layouts_json = json.dumps(pptx_structure.get("layouts", {}))
     pptx = db.query(Pptx).filter(Pptx.lesson_id == lesson_id).first()

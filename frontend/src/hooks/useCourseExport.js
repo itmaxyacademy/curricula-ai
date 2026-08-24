@@ -221,7 +221,7 @@ export function useCourseExport({ sessionId: initialSessionId, currentStep, acti
       const res = await fetch(`${API_BASE}/courses/${sessionId}/pptx/generate/lesson/${lessonId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_colors: pptxBrandColors })
+        body: JSON.stringify({ brand_colors: pptxBrandColors, role: (activeRole || 'student').toLowerCase() })
       });
       if (res.ok) {
         const data = await res.json();
@@ -275,7 +275,7 @@ export function useCourseExport({ sessionId: initialSessionId, currentStep, acti
       const res = await fetch(`${API_BASE}/courses/${sessionId}/pptx/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_colors: pptxBrandColors })
+        body: JSON.stringify({ brand_colors: pptxBrandColors, role: (activeRole || 'student').toLowerCase() })
       });
       if (res.ok) {
         const data = await res.json();

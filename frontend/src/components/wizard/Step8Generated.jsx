@@ -477,10 +477,11 @@ export function Step8Generated({
 
                     <div className="editor-panel" style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none', minHeight: 'auto' }}>
                       {(() => {
-                        const structLesson = (courseData?.structure || []).find(l => 
-                          (curLesson?.id && l.id === curLesson.id) || 
+                        const structLesson = (courseData?.structure || []).find(l =>
+                          (curLesson?.id && l.id === curLesson.id) ||
+                          (curLesson?.order && l.order === curLesson.order) ||
                           (curLesson?.title && (l.title === curLesson.title || l.title?.replace(/^Lesson\s*\d+\s*:\s*/i, '') === curLesson.title?.replace(/^Lesson\s*\d+\s*:\s*/i, '')))
-                        ) || (courseData?.structure || [])[0];
+                        );
 
                         return (
                           <>

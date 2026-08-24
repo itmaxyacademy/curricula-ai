@@ -79,6 +79,22 @@ async def generate_course_content_task_async(session_id: str):
         lessons_outline = json.loads(db_session.structure) if db_session.structure else []
         total_lessons = max(1, len(lessons_outline))
 
+        # Remove lessons that used to exist but were deleted from the
+        # structure (e.g. user removed a lesson in the Structure Builder
+        # before regenerating). Without this, the stale row keeps whatever
+        # position it had and still shows up in exports, which looks like
+        # "the order is wrong" even though the structure itself is correct.
+        current_keys = {str(item.get("id", i + 1)) for i, item in enumerate(lessons_outline)}
+        stale_lessons = db.query(Lesson).filter(
+            Lesson.course_id == session_id,
+            Lesson.structure_key.isnot(None),
+            ~Lesson.structure_key.in_(current_keys)
+        ).all() if current_keys else []
+        for stale in stale_lessons:
+            db.delete(stale)
+        if stale_lessons:
+            db.commit()
+
         for idx, item in enumerate(lessons_outline):
             if is_session_canceled(session_id) or db_session.status in ["canceled", "paused"] or ACTIVE_TASKS.get(session_id) != task_id:
                 print(f"[Generator] Session {session_id} canceled or paused. Halting immediately.")
@@ -93,17 +109,55 @@ async def generate_course_content_task_async(session_id: str):
                 print(f"[Generator] Session {session_id} canceled or paused. Halting immediately.")
                 return
 
-            # Check or create Lesson
-            lesson = db.query(Lesson).filter(Lesson.course_id == session_id, Lesson.position == idx + 1).first()
+            # Check or create Lesson.
+            # IMPORTANT: lessons are looked up by their stable structure identity
+            # (structure_key = the structure item's "id"), NOT by position. The
+            # "id" never changes when lessons are drag-and-drop reordered in the
+            # Structure Builder, whereas "position" does. Looking this up by
+            # position used to re-attach freshly generated content to whatever
+            # lesson happened to already occupy that slot, so reordering (or
+            # regenerating after a reorder) produced a PDF whose lesson order
+            # didn't match what the user set up.
+            struct_key = str(item.get("id", idx + 1))
+            lesson = db.query(Lesson).filter(
+                Lesson.course_id == session_id,
+                Lesson.structure_key == struct_key
+            ).first()
+
+            # Legacy fallback for rows created before structure_key existed.
+            if not lesson:
+                lesson = db.query(Lesson).filter(
+                    Lesson.course_id == session_id,
+                    Lesson.structure_key.is_(None),
+                    Lesson.position == idx + 1
+                ).first()
+
             if not lesson:
                 lesson = Lesson(
                     course_id=session_id,
                     title=item["title"],
-                    position=idx + 1
+                    position=idx + 1,
+                    structure_key=struct_key
                 )
                 db.add(lesson)
                 db.commit()
                 db.refresh(lesson)
+            else:
+                # Keep position/title/identity in sync with the current
+                # (possibly reordered) structure on every generation run.
+                changed = False
+                if lesson.position != idx + 1:
+                    lesson.position = idx + 1
+                    changed = True
+                if lesson.title != item["title"]:
+                    lesson.title = item["title"]
+                    changed = True
+                if lesson.structure_key != struct_key:
+                    lesson.structure_key = struct_key
+                    changed = True
+                if changed:
+                    db.commit()
+                    db.refresh(lesson)
 
             # Check if this lesson was already completed from a previous run before pause
             existing_creator = db.query(Section).filter(Section.lesson_id == lesson.id, Section.role == "creator").count()
@@ -371,7 +425,10 @@ async def validate_and_ensure_complete_content(session_id: str, db):
     })
 
     for lesson in course.lessons:
-        matching_outline = next((l for l in lessons_outline if l.get("id") == lesson.id or l.get("order") == lesson.position), {})
+        matching_outline = next((
+            l for l in lessons_outline
+            if str(l.get("id")) == lesson.structure_key or l.get("order") == lesson.position
+        ), {})
         sections_dict = matching_outline.get("sections", {}) if isinstance(matching_outline, dict) else {}
 
         for role_name in ["creator", "student", "educator"]:

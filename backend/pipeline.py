@@ -7,6 +7,7 @@ import copy
 from typing import Any
 from openai import OpenAI
 from dotenv import load_dotenv
+import exporter
 
 # Load environment variables explicitly from backend/.env
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
@@ -1270,57 +1271,88 @@ async def generate_custom_section_content(lesson_title: str, section_title: str,
         return f"Content for '{section_title}' could not be generated. Instruction: {instruction}."
 
 
-async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) -> dict:
-    """Generate PPT slide structure with 3 layouts using AI."""
+def _section_text_for_prompt(content, max_chars: int = 1500) -> str:
+    """Render a section's raw content (str/list/dict) into compact readable text,
+    reusing the same renderer the working PDF/DOCX exports use, so the PPTX
+    prompt sees exactly the same material as the other role-filtered exports."""
+    try:
+        lines = exporter.format_section_content_to_md(content)
+        text = "\n".join(lines)
+    except Exception:
+        text = str(content)
+    return text[:max_chars]
+
+
+def _role_lesson_sections(lesson: dict, role: str, course_data: dict) -> list:
+    """Ordered (title, content_text, section_type, raw_content) tuples for ONE role
+    only — this is the same helper the Student/Educator/Creator PDF & DOCX exports
+    use, so the PPTX deck matches what that role actually sees elsewhere in the app."""
+    ordered = exporter.get_ordered_sections_with_metadata(lesson, role, course_data)
+    return [(title, _section_text_for_prompt(content), sec_type, content) for title, content, sec_type in ordered]
+
+
+ROLE_DECK_FRAMING = {
+    "student": (
+        "This deck is STUDENT-FACING STUDY MATERIAL — the actual content students read and learn from, "
+        "like a lecture/course-material deck. Slides must present real concepts, explanations, examples, "
+        "and practice drawn ONLY from the lesson data below (the student's own materials). "
+        "Do NOT invent or include teacher-only material such as facilitator/classroom-activity instructions, "
+        "lesson timing plans, grading rubrics, or answer keys — those belong to a different deck, not this one."
+    ),
+    "educator": (
+        "This deck is an EDUCATOR/TEACHING COMPANION deck — facilitation notes, classroom activities, "
+        "timing, discussion prompts, and rubrics for the person delivering the class. It is not meant to be "
+        "handed to students as study material."
+    ),
+    "creator": (
+        "This deck is a CREATOR/AUTHORING overview — comprehensive technical material covering every "
+        "concept, exercise, and detail of the course content as authored."
+    ),
+    "all": (
+        "This deck should comprehensively cover the course material across all lesson content provided."
+    ),
+}
+
+
+async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, role: str = "student") -> dict:
+    """Generate PPT slide structure with 3 layouts using AI, scoped to a single
+    role's material (student/educator/creator/all) — mirroring the role-aware
+    PDF/DOCX exports so the deck only contains content appropriate for that
+    audience (e.g. actual learning material for students, not teacher notes)."""
+    role = (role or "student").lower()
+    if role not in ROLE_DECK_FRAMING:
+        role = "student"
+
     if not client:
         return {
             "layouts": {
-                "classic": _mock_pptx_layout(course_data, "classic"),
-                "modern": _mock_pptx_layout(course_data, "modern"),
-                "minimal": _mock_pptx_layout(course_data, "minimal")
+                "classic": _mock_pptx_layout(course_data, "classic", role),
+                "modern": _mock_pptx_layout(course_data, "modern", role),
+                "minimal": _mock_pptx_layout(course_data, "minimal", role)
             }
         }
 
     lessons_summary = []
     for lesson in course_data.get("lessons", []):
-        sections = lesson.get("sections", {})
-        creator = sections.get("creator", {})
-        student = sections.get("student", {})
-        educator = sections.get("educator", {})
-        
-        # Capture all custom and standard sections
-        all_sections_dict = {}
-        for role_key in ["creator", "student", "educator"]:
-            role_secs = sections.get(role_key, {})
-            if isinstance(role_secs, dict):
-                for k, v in role_secs.items():
-                    if k not in all_sections_dict:
-                        all_sections_dict[k] = v
-
+        role_sections = _role_lesson_sections(lesson, role, course_data)
         lessons_summary.append({
-            "title": lesson.get("title", "Untitled Lesson"),
-            "overview": creator.get("overview", ""),
-            "learning_outcomes": creator.get("learning_outcomes", []),
-            "core_content": str(creator.get("core_content", ""))[:4000],
-            "why_this_matters": student.get("why_this_matters", ""),
-            "learning_journey": student.get("learning_journey", "") or student.get("journey", ""),
-            "practice": student.get("practice", {}),
-            "debugging": student.get("debugging", ""),
-            "ethics": student.get("ethics", ""),
-            "exercises": creator.get("exercises", []),
-            "quiz": creator.get("quiz", []) or creator.get("quizzes", []),
-            "facilitator_guide": str(educator.get("facilitator_guide", ""))[:2000],
-            "lesson_plan": educator.get("lesson_plan", {}),
-            "all_sections": {k: (str(v)[:1500] if isinstance(v, str) else v) for k, v in all_sections_dict.items()}
+            "title": exporter.clean_lesson_title(lesson.get("title", "Untitled Lesson")),
+            "sections": [{"section_title": t, "content": c} for t, c, _, _ in role_sections]
         })
 
     colors_hint = ""
     if brand_colors:
         colors_hint = f"\nBrand colors: primary={brand_colors.get('primary', '#1a202c')}, accent={brand_colors.get('accent', '#d69e2e')}"
 
+    deck_framing = ROLE_DECK_FRAMING[role]
+
     prompt = f"""
     [ROLE]
     You are a Master Educator, Keynote Speaker, and Instructional Designer creating a world-class, highly engaging presentation slide deck with comprehensive educator narration scripts.
+
+    [AUDIENCE / DECK PURPOSE — CRITICAL]
+    {deck_framing}
+    All slide content (titles, bullets, code, notes) must be built strictly from the [LESSON DATA] below, which already contains only this audience's material — do not pull in or fabricate content outside of it.
 
     [TASK]
     Create a complete, high-impact, professional slide deck for the course "{course_data.get('title', 'Untitled Course')}".
@@ -1333,7 +1365,7 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
     Each layout must have the SAME rich slide content and speaker notes, but visually distinct styling.
 
     [SLIDE STRUCTURE]
-    Generate a thorough, complete slide deck covering all lesson topics and custom sections:
+    Generate a thorough, complete slide deck covering all lesson topics and sections listed in [LESSON DATA]:
 
     1. TITLE SLIDE (first slide):
        - title: Course title
@@ -1344,17 +1376,13 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
        - Numbered list of all lessons
        - notes: Narrative overview walking through the learning roadmap and how each module builds upon the previous.
 
-    3. FOR EACH LESSON, generate comprehensive slides covering all aspects:
-       a. LESSON TITLE slide — lesson number and clean title with introductory notes
-       b. OVERVIEW & WHY IT MATTERS slide — key motivations and real-world significance
-       c. LEARNING OUTCOMES slide — specific, actionable capabilities students will acquire
-       d. CORE CONCEPTS & CUSTOM TOPICS slides — thorough breakdown of core material and custom sub-topics:
-          - Extract all important concepts, theories, and steps
-          - Split across multiple slides for clarity (3-5 informative bullet points per slide)
-          - Each bullet must be an informative explanation with clear context
-       e. CODE EXAMPLE / PRACTICAL APPLICATION slide(s) — real code or step-by-step application walkthrough
-       f. COMMON PITFALLS & TROUBLESHOOTING slide — practical advice on what to avoid and best practices
-       g. ETHICS & STANDARDS / KEY TAKEAWAYS slide — professional standards and summary
+    3. FOR EACH LESSON, generate comprehensive slides covering all of its listed sections:
+       a. LESSON TITLE slide — title MUST be exactly "Lesson {{N}}: {{the lesson's title field, verbatim}}" — the title field in [LESSON DATA] is already the clean lesson name with NO "Lesson N:" prefix, so do not duplicate or reword it, just prepend the number once.
+       b. For EACH section provided for this lesson in [LESSON DATA] (in the given order), produce one or more CONTENT slides:
+          - Turn the section's content into 3-6 clear, informative bullet points (or a "code" slide if the section is a code example/practical walkthrough)
+          - Each bullet must be a complete, informative statement a learner could actually study from — not a vague label
+          - Split a section across multiple slides if it has a lot of material (max 6 bullets per slide)
+          - Use the section_title as the basis for the slide title
 
     4. END SLIDE:
        - title: "Thank You / Terima Kasih"
@@ -1362,8 +1390,8 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
        - notes: Inspiring concluding speech, Q&A invite, and call to action.
 
     [SPEAKER NOTES & NARRATION REQUIREMENTS - CRITICAL]
-    - Every single slide MUST contain a complete, thorough, educator speaking script in the "notes" field (4 to 8 sentences).
-    - The narration script must sound like an expert instructor speaking directly to students: explaining the core 'why' and 'how', giving practical analogies, emphasizing key nuances, and asking reflective questions.
+    - Every single slide MUST contain a complete, thorough speaking script in the "notes" field (4 to 8 sentences).
+    - The narration script must sound like an expert instructor speaking directly to this audience: explaining the core 'why' and 'how', giving practical analogies, emphasizing key nuances, and asking reflective questions.
     - Do NOT write placeholder notes like "This slide covers X". Write the actual spoken words of the lecture.
 
     [LANGUAGE REQUIREMENT]
@@ -1379,7 +1407,7 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
         "layout_1": {{
           "theme": {{"primary": "#1a202c", "secondary": "#ffffff", "accent": "#d69e2e", "text": "#ffffff"}},
           "slides": [
-            {{"type": "title", "title": "Course Title", "subtitle": "", "notes": "Full educator speech script..."}},
+            {{"type": "title", "title": "Course Title", "subtitle": "", "notes": "Full speech script..."}},
             {{"type": "toc", "title": "Table of Contents", "items": ["1. Lesson Title", "2. Lesson Title"], "notes": "..."}},
             {{"type": "lesson_title", "title": "Lesson 1: ...", "subtitle": "", "notes": "..."}},
             {{"type": "content", "title": "...", "bullets": ["Comprehensive explanation...", "..."], "notes": "Full speaking narration..."}},
@@ -1423,20 +1451,33 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None) 
             data = {"layouts": data}
         for layout_name in ["layout_1", "layout_2", "layout_3"]:
             if layout_name not in data["layouts"]:
-                data["layouts"][layout_name] = _mock_pptx_layout(course_data, layout_name)
+                data["layouts"][layout_name] = _mock_pptx_layout(course_data, layout_name, role)
         return data
     except Exception as e:
         print(f"Error generating PPTX structure: {e}")
         return {
             "layouts": {
-                "layout_1": _mock_pptx_layout(course_data, "layout_1"),
-                "layout_2": _mock_pptx_layout(course_data, "layout_2"),
-                "layout_3": _mock_pptx_layout(course_data, "layout_3")
+                "layout_1": _mock_pptx_layout(course_data, "layout_1", role),
+                "layout_2": _mock_pptx_layout(course_data, "layout_2", role),
+                "layout_3": _mock_pptx_layout(course_data, "layout_3", role)
             }
         }
 
 
-def _mock_pptx_layout(course_data: dict, layout_name: str) -> dict:
+def _text_to_bullets(text: str, max_bullets: int = 5, min_len: int = 6) -> list:
+    """Turn rendered section text into a handful of readable bullet points."""
+    cleaned = text.replace("**", "").replace("###", "").replace("##", "").replace("- ", "")
+    lines = [l.strip(" -*") for l in cleaned.split("\n") if l.strip(" -*")]
+    if len(lines) <= 1 and lines:
+        # Single blob of prose — split on sentence boundaries instead.
+        lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if s.strip()]
+    bullets = [l for l in lines if len(l) >= min_len and not l.startswith("```")][:max_bullets]
+    if not bullets and text.strip():
+        bullets = [text.strip()[:220]]
+    return bullets
+
+
+def _mock_pptx_layout(course_data: dict, layout_name: str, role: str = "student") -> dict:
     themes = {
         "layout_1": {"primary": "#1a202c", "secondary": "#ffffff", "accent": "#d69e2e", "text": "#ffffff"},
         "layout_2": {"primary": "#1a202c", "secondary": "#ffffff", "accent": "#3182ce", "text": "#ffffff"},
@@ -1447,51 +1488,35 @@ def _mock_pptx_layout(course_data: dict, layout_name: str) -> dict:
     difficulty = course_data.get("config", {}).get("difficulty", "Beginner")
     audience = course_data.get("config", {}).get("target_audience", "Student")
     lessons = course_data.get("lessons", [])
+    role = (role or "student").lower()
 
     slides = [
         {"type": "title", "title": title, "subtitle": "", "notes": f"Welcome to {title}. This course is designed for {audience} at {difficulty} level. Let's begin our learning journey."},
-        {"type": "toc", "title": "Table of Contents", "items": [f"{i+1}. {l.get('title', 'Untitled')}" for i, l in enumerate(lessons)], "notes": f"Here is what we will cover today. We have {len(lessons)} lessons to explore."}
+        {"type": "toc", "title": "Table of Contents", "items": [f"{i+1}. {exporter.clean_lesson_title(l.get('title', 'Untitled'))}" for i, l in enumerate(lessons)], "notes": f"Here is what we will cover today. We have {len(lessons)} lessons to explore."}
     ]
     for i, lesson in enumerate(lessons):
-        sections = lesson.get("sections", {})
-        creator = sections.get("creator", {})
-        student = sections.get("student", {})
-        educator = sections.get("educator", {})
+        clean_title = exporter.clean_lesson_title(lesson.get('title', 'Untitled'))
+        slides.append({"type": "lesson_title", "title": f"Lesson {i+1}: {clean_title}", "subtitle": "", "notes": f"Let's begin Lesson {i+1}. This lesson covers key concepts and practical applications."})
 
-        slides.append({"type": "lesson_title", "title": f"Lesson {i+1}: {lesson.get('title', 'Untitled')}", "subtitle": "", "notes": f"Let's begin Lesson {i+1}. This lesson covers key concepts and practical applications."})
-
-        overview = creator.get("overview", "No overview available.")
-        if overview:
-            overview_bullets = [s.strip() for s in overview.replace("**", "").split(".") if s.strip()][:4]
-            if not overview_bullets:
-                overview_bullets = [overview[:200]]
-            slides.append({"type": "content", "title": "Overview", "bullets": overview_bullets, "notes": f"This lesson overview covers: {overview[:300]}"})
-
-        outcomes = creator.get("learning_outcomes", [])
-        if isinstance(outcomes, list) and outcomes:
-            slides.append({"type": "content", "title": "Learning Outcomes", "bullets": outcomes[:4], "notes": "By the end of this lesson, you will be able to demonstrate understanding of these key concepts and apply them in practice."})
-
-        core_content = creator.get("core_content", "")
-        if core_content:
-            lines = [l.strip() for l in core_content.replace("**", "").replace("###", "").split("\n") if l.strip() and not l.strip().startswith("#")]
-            bullets = [l for l in lines if not l.startswith("```")][:4]
+        for section_title, section_text, sec_type, raw_content in _role_lesson_sections(lesson, role, course_data):
+            if not section_text.strip():
+                continue
+            raw_code_block = raw_content.get("code_block") if isinstance(raw_content, dict) else None
+            is_code = bool(raw_code_block) or "code" in str(sec_type).lower() or "```" in section_text
+            if is_code:
+                if raw_code_block:
+                    code_body = raw_code_block
+                else:
+                    code_match = re.search(r"```(?:\w+)?\n?([\s\S]*?)```", section_text)
+                    code_body = code_match.group(1) if code_match else section_text
+                slides.append({"type": "code", "title": section_title, "code": code_body[:1000], "language": "python", "notes": f"Let's walk through {section_title.lower()}. Follow along step by step."})
+                checklist = raw_content.get("checklist") if isinstance(raw_content, dict) else None
+                if isinstance(checklist, list) and checklist:
+                    slides.append({"type": "content", "title": f"{section_title} Checklist", "bullets": [f"✓ {item}" for item in checklist[:5]], "notes": "Complete these steps to practice what you've learned."})
+                continue
+            bullets = _text_to_bullets(section_text)
             if bullets:
-                slides.append({"type": "content", "title": "Core Concepts", "bullets": bullets, "notes": f"Let's dive into the core concepts. {bullets[0] if bullets else ''}"})
-
-        practice = student.get("practice", {})
-        if isinstance(practice, dict):
-            code_block = practice.get("code_block", "")
-            if code_block:
-                slides.append({"type": "code", "title": "Practice Exercise", "code": code_block[:1000], "language": "python", "notes": "Let's try this hands-on exercise. Follow along and run the code to see how it works."})
-            checklist = practice.get("checklist", [])
-            if checklist and isinstance(checklist, list):
-                slides.append({"type": "content", "title": "Exercise Checklist", "bullets": [f"✓ {item}" for item in checklist[:4]], "notes": "Complete these steps to practice what you've learned."})
-
-        facilitator = educator.get("facilitator_guide", "")
-        if facilitator:
-            tips = [t.strip() for t in facilitator.replace("**", "").split(".") if t.strip() and len(t.strip()) > 10][:5]
-            if tips:
-                slides.append({"type": "content", "title": "Key Takeaways", "bullets": tips, "notes": "Here are the key points to remember from this lesson."})
+                slides.append({"type": "content", "title": section_title, "bullets": bullets, "notes": f"This slide covers {section_title.lower()}: {bullets[0]}"})
 
     slides.append({"type": "end", "title": "Thank You", "subtitle": title, "notes": f"Thank you for completing {title}. Continue practicing and exploring the concepts covered."})
 

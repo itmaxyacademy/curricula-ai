@@ -23,6 +23,10 @@ class Lesson(Base):
     course_id = Column(String(36), ForeignKey("courses.id", ondelete="CASCADE"), index=True)
     title = Column(String(200))
     position = Column(Integer)
+    # Stable identity of this lesson within the structure blueprint (structure item "id").
+    # Unlike `position`, this never changes when the user reorders lessons, so generated
+    # content stays attached to the correct lesson even after drag-and-drop reordering.
+    structure_key = Column(String(64), nullable=True, index=True)
     course = relationship("Course", back_populates="lessons")
     sections = relationship("Section", back_populates="lesson", cascade="all, delete-orphan")
     pptx = relationship("Pptx", back_populates="lesson", uselist=False, cascade="all, delete-orphan")
