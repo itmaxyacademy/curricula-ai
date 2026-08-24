@@ -252,6 +252,18 @@ export function Step8Generated({
                     </button>
                   </div>
                   {currentPptxSlide && (() => {
+                    const stripMarkdown = (str) => {
+                      if (!str) return '';
+                      return String(str)
+                        .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+                        .replace(/\*{1,3}(.*?)\*{1,3}/g, '$1')
+                        .replace(/_{1,3}(.*?)_{1,3}/g, '$1')
+                        .replace(/`([^`]+)`/g, '$1')
+                        .replace(/^\s*#{1,6}\s*/g, '')
+                        .replace(/^\s*[\-\*\•]\s*/g, '')
+                        .trim();
+                    };
+
                     const theme = pptxData.layouts?.[pptxLayout]?.theme || {};
                     const isLayout1 = pptxLayout === 'layout_1';
                     const isLayout2 = pptxLayout === 'layout_2';
@@ -263,39 +275,41 @@ export function Step8Generated({
                       <div style={{
                           background: bgColor,
                           borderRadius: '8px',
-                          padding: '24px',
+                          padding: '24px 32px',
                           height: '360px',
                           width: '640px',
                           maxWidth: '100%',
                           margin: '0 auto',
-                          overflow: 'auto',
+                          overflow: 'hidden',
                           display: 'flex',
                           flexDirection: 'column',
                           justifyContent: 'center',
-                          position: 'relative'
+                          position: 'relative',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                          userSelect: 'none'
                       }}>
                         {isLayout2 && <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '200px', height: '200px', borderRadius: '50%', background: accentColor, opacity: 0.15 }}></div>}
                         {isLayout3 && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: accentColor }}></div>}
                         {currentPptxSlide.type === 'title' && (
                           <div style={{ textAlign: 'center' }}>
                             {isLayout1 && <div style={{ width: '100%', height: '4px', background: accentColor, position: 'absolute', top: 0, left: 0 }}></div>}
-                            <h1 style={{ color: textColor, fontSize: '2.2rem', fontWeight: 800, marginBottom: '12px' }}>{currentPptxSlide.title}</h1>
+                            <h1 style={{ color: textColor, fontSize: '2rem', fontWeight: 800, marginBottom: '12px', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{stripMarkdown(currentPptxSlide.title)}</h1>
                             {currentPptxSlide.subtitle && (
                               <>
-                                <div style={{ width: isLayout3 ? '60px' : '80px', height: isLayout3 ? '2px' : '4px', background: accentColor, margin: '0 auto 16px', borderRadius: '2px' }}></div>
-                                <p style={{ color: accentColor, fontSize: '1.1rem', fontWeight: 600 }}>{currentPptxSlide.subtitle}</p>
+                                <div style={{ width: isLayout3 ? '60px' : '80px', height: isLayout3 ? '2px' : '4px', background: accentColor, margin: '0 auto 14px', borderRadius: '2px' }}></div>
+                                <p style={{ color: accentColor, fontSize: '1.05rem', fontWeight: 600, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{stripMarkdown(currentPptxSlide.subtitle)}</p>
                               </>
                             )}
                           </div>
                         )}
                         {currentPptxSlide.type === 'toc' && (
-                          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                            <h2 style={{ color: textColor, fontSize: '1.6rem', fontWeight: 800, marginBottom: '20px' }}>{currentPptxSlide.title}</h2>
-                            <div style={{ width: isLayout3 ? '40px' : '60px', height: isLayout3 ? '2px' : '3px', background: accentColor, marginBottom: '20px', borderRadius: '2px' }}></div>
-                            {(currentPptxSlide.items || []).map((item, i) => (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <h2 style={{ color: textColor, fontSize: '1.45rem', fontWeight: 800, marginBottom: '8px' }}>{stripMarkdown(currentPptxSlide.title)}</h2>
+                            <div style={{ width: isLayout3 ? '40px' : '60px', height: isLayout3 ? '2px' : '3px', background: accentColor, marginBottom: '14px', borderRadius: '2px' }}></div>
+                            {(currentPptxSlide.items || []).slice(0, 5).map((item, i) => (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                                 {!isLayout3 && <div style={{ width: isLayout2 ? '8px' : '10px', height: isLayout2 ? '8px' : '10px', borderRadius: isLayout2 ? '50%' : '2px', background: accentColor, flexShrink: 0 }}></div>}
-                                <p style={{ color: isLayout3 ? (theme.text || '#1a202c') : '#ccc', fontSize: '1rem', paddingLeft: isLayout3 ? '16px' : 0, borderLeft: isLayout3 ? `2px solid ${accentColor}` : 'none' }}>{isLayout3 ? `— ${item}` : item}</p>
+                                <p style={{ color: isLayout3 ? (theme.text || '#1a202c') : '#ccc', fontSize: '0.92rem', paddingLeft: isLayout3 ? '12px' : 0, borderLeft: isLayout3 ? `2px solid ${accentColor}` : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{isLayout3 ? `— ${stripMarkdown(item)}` : stripMarkdown(item)}</p>
                               </div>
                             ))}
                           </div>
@@ -303,38 +317,38 @@ export function Step8Generated({
                         {currentPptxSlide.type === 'lesson_title' && (
                           <div style={{ paddingLeft: isLayout1 ? '16px' : 0, borderLeft: isLayout1 ? `5px solid ${accentColor}` : 'none' }}>
                             {isLayout2 && <div style={{ position: 'absolute', bottom: '-20px', left: '-20px', width: '150px', height: '150px', borderRadius: '50%', background: accentColor, opacity: 0.1 }}></div>}
-                            <h2 style={{ color: textColor, fontSize: '2rem', fontWeight: 800, marginBottom: '8px' }}>{currentPptxSlide.title}</h2>
-                            {currentPptxSlide.subtitle && <p style={{ color: accentColor, fontSize: '1rem' }}>{currentPptxSlide.subtitle}</p>}
+                            <h2 style={{ color: textColor, fontSize: '1.85rem', fontWeight: 800, marginBottom: '8px', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{stripMarkdown(currentPptxSlide.title)}</h2>
+                            {currentPptxSlide.subtitle && <p style={{ color: accentColor, fontSize: '1rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{stripMarkdown(currentPptxSlide.subtitle)}</p>}
                             {isLayout3 && <div style={{ width: '50px', height: '2px', background: accentColor, marginTop: '12px' }}></div>}
                           </div>
                         )}
                         {currentPptxSlide.type === 'content' && (
-                          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                            <h2 style={{ color: textColor, fontSize: '1.5rem', fontWeight: 800, marginBottom: '16px' }}>{currentPptxSlide.title}</h2>
-                            <div style={{ width: isLayout3 ? '30px' : '50px', height: isLayout3 ? '2px' : '3px', background: accentColor, marginBottom: '16px', borderRadius: '2px' }}></div>
-                            {(currentPptxSlide.bullets || []).map((bullet, i) => (
-                              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
-                                {!isLayout3 && <div style={{ width: isLayout2 ? '8px' : '10px', height: isLayout2 ? '8px' : '10px', borderRadius: isLayout2 ? '50%' : '2px', background: accentColor, marginTop: '7px', flexShrink: 0 }}></div>}
-                                <p style={{ color: isLayout3 ? (theme.text || '#1a202c') : '#ddd', fontSize: '0.95rem', lineHeight: 1.5, paddingLeft: isLayout3 ? '16px' : 0 }}>{isLayout3 ? `— ${bullet}` : bullet}</p>
+                          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <h2 style={{ color: textColor, fontSize: '1.35rem', fontWeight: 800, marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stripMarkdown(currentPptxSlide.title)}</h2>
+                            <div style={{ width: isLayout3 ? '30px' : '50px', height: isLayout3 ? '2px' : '3px', background: accentColor, marginBottom: '12px', borderRadius: '2px' }}></div>
+                            {(currentPptxSlide.bullets || []).slice(0, 4).map((bullet, i) => (
+                              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+                                {!isLayout3 && <div style={{ width: isLayout2 ? '6px' : '8px', height: isLayout2 ? '6px' : '8px', borderRadius: isLayout2 ? '50%' : '2px', background: accentColor, marginTop: '6px', flexShrink: 0 }}></div>}
+                                <p style={{ color: isLayout3 ? (theme.text || '#1a202c') : '#ddd', fontSize: '0.88rem', lineHeight: 1.35, paddingLeft: isLayout3 ? '12px' : 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word', margin: 0 }}>{isLayout3 ? `— ${stripMarkdown(bullet)}` : stripMarkdown(bullet)}</p>
                               </div>
                             ))}
                           </div>
                         )}
                         {currentPptxSlide.type === 'code' && (
-                          <div>
-                            <h2 style={{ color: textColor, fontSize: '1.4rem', fontWeight: 800, marginBottom: '16px' }}>{currentPptxSlide.title}</h2>
-                            <pre style={{ background: isLayout3 ? '#f0f0f5' : isLayout2 ? 'rgba(15,25,45,0.8)' : 'rgba(0,0,0,0.4)', borderRadius: '8px', padding: '16px', color: isLayout3 ? '#28283c' : '#00c878', fontFamily: 'Courier New, monospace', fontSize: '0.7rem', lineHeight: 1.5, overflowY: 'auto', border: isLayout3 ? '1px solid #d0d0da' : isLayout2 ? `1px solid ${accentColor}40` : 'none' }}>{currentPptxSlide.code}</pre>
+                          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <h2 style={{ color: textColor, fontSize: '1.25rem', fontWeight: 800, marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stripMarkdown(currentPptxSlide.title)}</h2>
+                            <pre style={{ background: isLayout3 ? '#f0f0f5' : isLayout2 ? 'rgba(15,25,45,0.8)' : 'rgba(0,0,0,0.4)', borderRadius: '8px', padding: '12px', color: isLayout3 ? '#28283c' : '#00c878', fontFamily: 'Courier New, monospace', fontSize: '0.72rem', lineHeight: 1.4, overflow: 'hidden', height: '210px', wordBreak: 'break-all', border: isLayout3 ? '1px solid #d0d0da' : isLayout2 ? `1px solid ${accentColor}40` : 'none', margin: 0 }}>{currentPptxSlide.code}</pre>
                           </div>
                         )}
                         {currentPptxSlide.type === 'end' && (
                           <div style={{ textAlign: 'center' }}>
                             {isLayout2 && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '200px', height: '200px', borderRadius: '50%', background: accentColor, opacity: 0.1 }}></div>}
-                            <h1 style={{ color: textColor, fontSize: '2.5rem', fontWeight: 800, marginBottom: '12px', position: 'relative' }}>{currentPptxSlide.title}</h1>
-                            <div style={{ width: isLayout3 ? '60px' : '80px', height: isLayout3 ? '2px' : '4px', background: accentColor, margin: '0 auto 16px', borderRadius: '2px', position: 'relative' }}></div>
-                            <p style={{ color: accentColor, fontSize: '1.1rem', position: 'relative' }}>{currentPptxSlide.subtitle}</p>
+                            <h1 style={{ color: textColor, fontSize: '2.4rem', fontWeight: 800, marginBottom: '10px', position: 'relative' }}>{stripMarkdown(currentPptxSlide.title)}</h1>
+                            <div style={{ width: isLayout3 ? '60px' : '80px', height: isLayout3 ? '2px' : '4px', background: accentColor, margin: '0 auto 14px', borderRadius: '2px', position: 'relative' }}></div>
+                            <p style={{ color: accentColor, fontSize: '1.05rem', position: 'relative', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{stripMarkdown(currentPptxSlide.subtitle)}</p>
                           </div>
                         )}
-                        <div style={{ position: 'absolute', bottom: '12px', right: '20px', color: isLayout3 ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.3)', fontSize: '0.75rem' }}>{pptxSlideIndex + 1}</div>
+                        <div style={{ position: 'absolute', bottom: '10px', right: '16px', color: isLayout3 ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.4)', fontSize: '0.75rem', fontWeight: 600 }}>{pptxSlideIndex + 1}</div>
                       </div>
                     );
                   })()}

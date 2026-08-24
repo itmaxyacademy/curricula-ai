@@ -1536,6 +1536,28 @@ def _hex_to_rgb(hex_color: str):
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
+def strip_markdown_syntax(text: str) -> str:
+    """Clean markdown formatting syntax (**, *, __, _, `, #, links) to plain text for PPTX shapes."""
+    if not text or not isinstance(text, str):
+        return "" if text is None else str(text)
+    
+    cleaned = text
+    # Remove markdown links [label](url) -> label
+    cleaned = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', cleaned)
+    # Remove bold & italic: ***text***, **text**, *text*, ___text___, __text__, _text_
+    cleaned = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', cleaned)
+    cleaned = re.sub(r'_{1,3}(.*?)_{1,3}', r'\1', cleaned)
+    # Remove inline code backticks `code` -> code
+    cleaned = re.sub(r'`([^`]+)`', r'\1', cleaned)
+    # Remove markdown headers at start of line: ### Header -> Header
+    cleaned = re.sub(r'^\s*#{1,6}\s*', '', cleaned)
+    # Remove leading bullet markers like "- " or "* " or "• "
+    cleaned = re.sub(r'^\s*[\-\*\•]\s*', '', cleaned)
+    # Clean multiple spaces
+    cleaned = re.sub(r'[ \t]+', ' ', cleaned).strip()
+    return cleaned
+
+
 def create_pptx_from_structure(slides_json: dict, layout: str = "modern", brand_colors: dict = None) -> io.BytesIO:
     """Create a PPTX file from AI-generated slide structure."""
     try:
@@ -1576,7 +1598,8 @@ def create_pptx_from_structure(slides_json: dict, layout: str = "modern", brand_
 
         notes_slide = slide.notes_slide
         notes_tf = notes_slide.notes_text_frame
-        notes_tf.text = slide_data.get("notes", "")
+        raw_notes = slide_data.get("notes", "")
+        notes_tf.text = strip_markdown_syntax(raw_notes) if raw_notes else ""
 
         slide_type = slide_data.get("type", "content")
 
@@ -1628,7 +1651,8 @@ def _add_title_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, layout
     tf = title_box.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
-    p.text = data.get("title", "Course Title")
+    raw_title = data.get("title", "Course Title")
+    p.text = strip_markdown_syntax(raw_title)
     p.font.size = Pt(44)
     p.font.bold = True
     p.font.color.rgb = secondary_rgb
@@ -1640,7 +1664,7 @@ def _add_title_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, layout
         tf2 = subtitle_box.text_frame
         tf2.word_wrap = True
         p2 = tf2.paragraphs[0]
-        p2.text = subtitle
+        p2.text = strip_markdown_syntax(subtitle)
         p2.font.size = Pt(20)
         p2.font.color.rgb = accent_rgb
         p2.alignment = PP_ALIGN.CENTER
@@ -1686,7 +1710,8 @@ def _add_toc_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, text_rgb
     title_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.5), Inches(11), Inches(1))
     tf = title_box.text_frame
     p = tf.paragraphs[0]
-    p.text = data.get("title", "Table of Contents")
+    raw_title = data.get("title", "Table of Contents")
+    p.text = strip_markdown_syntax(raw_title)
     p.font.size = Pt(32)
     p.font.bold = True
     p.font.color.rgb = secondary_rgb
@@ -1713,7 +1738,7 @@ def _add_toc_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, text_rgb
     tf2.word_wrap = True
     for i, item in enumerate(items):
         p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
-        p.text = item
+        p.text = strip_markdown_syntax(item)
         p.font.size = Pt(18)
         p.font.color.rgb = text_rgb
         p.space_after = Pt(10)
@@ -1761,7 +1786,8 @@ def _add_lesson_title_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb,
     tf = title_box.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
-    p.text = data.get("title", "Lesson")
+    raw_title = data.get("title", "Lesson")
+    p.text = strip_markdown_syntax(raw_title)
     p.font.size = Pt(36)
     p.font.bold = True
     p.font.color.rgb = secondary_rgb
@@ -1771,7 +1797,7 @@ def _add_lesson_title_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb,
         sub_box = slide.shapes.add_textbox(Inches(1), Inches(4.2), Inches(11), Inches(1))
         tf2 = sub_box.text_frame
         p2 = tf2.paragraphs[0]
-        p2.text = subtitle
+        p2.text = strip_markdown_syntax(subtitle)
         p2.font.size = Pt(18)
         p2.font.color.rgb = accent_rgb
 
@@ -1806,7 +1832,8 @@ def _add_content_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, text
     title_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.5), Inches(11), Inches(1))
     tf = title_box.text_frame
     p = tf.paragraphs[0]
-    p.text = data.get("title", "Content")
+    raw_title = data.get("title", "Content")
+    p.text = strip_markdown_syntax(raw_title)
     p.font.size = Pt(28)
     p.font.bold = True
     p.font.color.rgb = secondary_rgb
@@ -1833,7 +1860,8 @@ def _add_content_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, text
     tf2.word_wrap = True
     for i, bullet in enumerate(bullets):
         p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
-        p.text = f"  {bullet}"
+        clean_bullet = strip_markdown_syntax(bullet)
+        p.text = f"  {clean_bullet}"
         p.font.size = Pt(16)
         p.font.color.rgb = text_rgb
         p.space_after = Pt(8)
@@ -1871,7 +1899,8 @@ def _add_code_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, text_rg
     title_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.5), Inches(11), Inches(1))
     tf = title_box.text_frame
     p = tf.paragraphs[0]
-    p.text = data.get("title", "Code Example")
+    raw_title = data.get("title", "Code Example")
+    p.text = strip_markdown_syntax(raw_title)
     p.font.size = Pt(28)
     p.font.bold = True
     p.font.color.rgb = secondary_rgb
@@ -1931,7 +1960,8 @@ def _add_end_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, layout="
     title_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(11), Inches(1.5))
     tf = title_box.text_frame
     p = tf.paragraphs[0]
-    p.text = data.get("title", "Thank You")
+    raw_title = data.get("title", "Thank You")
+    p.text = strip_markdown_syntax(raw_title)
     p.font.size = Pt(48)
     p.font.bold = True
     p.font.color.rgb = secondary_rgb
@@ -1942,7 +1972,7 @@ def _add_end_slide(slide, data, primary_rgb, secondary_rgb, accent_rgb, layout="
         sub_box = slide.shapes.add_textbox(Inches(1), Inches(4.2), Inches(11), Inches(1))
         tf2 = sub_box.text_frame
         p2 = tf2.paragraphs[0]
-        p2.text = subtitle
+        p2.text = strip_markdown_syntax(subtitle)
         p2.font.size = Pt(20)
         p2.font.color.rgb = accent_rgb
         p2.alignment = PP_ALIGN.CENTER
