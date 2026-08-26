@@ -28,9 +28,20 @@ def upgrade() -> None:
     immutable item id, so reordering could scramble which content ended
     up under which lesson title in exports.
     """
-    with op.batch_alter_table('lessons') as batch_op:
-        batch_op.add_column(sa.Column('structure_key', sa.String(length=64), nullable=True))
-    op.create_index('ix_lessons_structure_key', 'lessons', ['structure_key'])
+    import sqlalchemy as sa
+    bind = op.get_bind()
+    # Check if column already exists
+    if bind.dialect.name == 'sqlite':
+        result = bind.execute(sa.text("PRAGMA table_info(lessons)"))
+        cols = [row[1] for row in result.fetchall()]
+    else:
+        result = bind.execute(sa.text("SHOW COLUMNS FROM lessons LIKE 'structure_key'"))
+        cols = [row[0] for row in result.fetchall()]
+
+    if 'structure_key' not in cols:
+        with op.batch_alter_table('lessons') as batch_op:
+            batch_op.add_column(sa.Column('structure_key', sa.String(length=64), nullable=True))
+        op.create_index('ix_lessons_structure_key', 'lessons', ['structure_key'])
 
 
 def downgrade() -> None:

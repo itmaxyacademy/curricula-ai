@@ -20,11 +20,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.alter_column('sections', 'section_type', existing_type=sa.String(length=50), type_=sa.String(length=100), existing_nullable=False)
-    op.alter_column('history', 'section_type', existing_type=sa.String(length=50), type_=sa.String(length=100), existing_nullable=True)
+    with op.batch_alter_table('sections') as batch_op:
+        batch_op.alter_column('section_type', existing_type=sa.String(length=50), type_=sa.String(length=100), existing_nullable=False)
+    with op.batch_alter_table('history') as batch_op:
+        batch_op.alter_column('section_type', existing_type=sa.String(length=50), type_=sa.String(length=100), existing_nullable=True)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.alter_column('history', 'section_type', existing_type=sa.String(length=100), type_=sa.String(length=50), existing_nullable=True)
-    op.alter_column('sections', 'section_type', existing_type=sa.String(length=100), type_=sa.String(length=50), existing_nullable=False)
+    with op.batch_alter_table('history') as batch_op:
+        batch_op.alter_column('section_type', existing_type=sa.String(length=100), type_=sa.String(length=50), existing_nullable=True)
+    with op.batch_alter_table('sections') as batch_op:
+        batch_op.alter_column('section_type', existing_type=sa.String(length=100), type_=sa.String(length=50), existing_nullable=False)
