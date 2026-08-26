@@ -142,6 +142,11 @@ async def generate_course_content_task_async(session_id: str):
                 db.add(lesson)
                 db.commit()
                 db.refresh(lesson)
+                # A freshly created lesson has no prior state to diff against,
+                # so treat it as "changed" (there are no old sections to
+                # clear, and downstream logic at line ~190 relies on this
+                # variable being defined either way).
+                changed = True
             else:
                 # Keep position/title/identity in sync with the current
                 # (possibly reordered) structure on every generation run.
