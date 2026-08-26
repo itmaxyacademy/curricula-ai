@@ -49,6 +49,16 @@ Thumbs.db
 
 # Dokumentasi internal
 DOKUMENTASI-CREATOR-AI.md
+AGENTS.md
 
 # Dokumentasi internal (jangan di-push)
 docs/
+
+# Graphify (knowledge graph output)
+graphify-out/
+
+# OpenCode (local AI agent config)
+.opencode/
+
+# Local config
+.gitattributes
