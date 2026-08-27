@@ -74,6 +74,50 @@
   50%       { opacity: 0; }
 }
 
+@keyframes hourglassFlip {
+  0% { transform: rotate(0deg) scale(1); }
+  45% { transform: rotate(180deg) scale(1.15); }
+  55% { transform: rotate(180deg) scale(1); }
+  90% { transform: rotate(360deg) scale(1.15); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes slideGlowPulse {
+  0%, 100% {
+    box-shadow: 0 8px 32px rgba(26, 32, 64, 0.4), 0 0 0 1px rgba(233, 178, 89, 0.2);
+  }
+  50% {
+    box-shadow: 0 12px 44px rgba(26, 32, 64, 0.65), 0 0 24px 3px rgba(233, 178, 89, 0.4);
+  }
+}
+
+@keyframes slideSkeletonSweep {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.hourglass-animated {
+  display: inline-block;
+  animation: hourglassFlip 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transform-origin: center center;
+  filter: drop-shadow(0 2px 6px rgba(233, 178, 89, 0.5));
+}
+
+.slide-glow-loading {
+  animation: slideGlowPulse 2.5s ease-in-out infinite;
+}
+
+.slide-skeleton-line {
+  background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.06) 75%);
+  background-size: 200% 100%;
+  animation: slideSkeletonSweep 1.8s infinite linear;
+  border-radius: 6px;
+}
+
 .spin  { animation: spin 0.8s linear infinite; }
 .spin-smooth { 
   animation: spin 0.8s linear infinite; 

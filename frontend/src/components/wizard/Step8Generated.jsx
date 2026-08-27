@@ -1,9 +1,155 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconPlus } from '../icons/Icons';
 import { ContentRenderer } from '../common/ContentRenderer';
 import { CreatorView } from '../views/CreatorView';
 import { StudentView } from '../views/StudentView';
 import { EducatorView } from '../views/EducatorView';
+
+function SlideGenerationLoader({ lessonTitle }) {
+  const [progress, setProgress] = useState(18);
+  const [activeStep, setActiveStep] = useState(0);
+
+  const steps = [
+    { title: "Analyzing Lesson Concept & Keywords", desc: "Structuring pedagogical depth and slide hierarchy" },
+    { title: "Composing 6 High-Impact Slide Types", desc: "Title, Agenda, Outcomes, Core Theory, Code, Narration" },
+    { title: "Styling 3 Themes (Corporate, Creative, Clean)", desc: "Applying color palettes, typography, and contrast tokens" },
+    { title: "Writing Full Educator Narration Script", desc: "Creating word-by-word spoken notes for instructors" }
+  ];
+
+  useEffect(() => {
+    const progressTimer = setInterval(() => {
+      setProgress(prev => {
+        if (prev < 40) return prev + 3.5;
+        if (prev < 75) return prev + 2;
+        if (prev < 90) return prev + 0.6;
+        return Math.min(prev + 0.15, 95);
+      });
+    }, 350);
+
+    const stepTimer = setInterval(() => {
+      setActiveStep(prev => (prev < steps.length - 1 ? prev + 1 : prev));
+    }, 2400);
+
+    return () => {
+      clearInterval(progressTimer);
+      clearInterval(stepTimer);
+    };
+  }, []);
+
+  const slidePreviews = [
+    { id: 1, type: "Title Slide", icon: "🏷️", desc: "Cover, Title & Subtitle", bg: "linear-gradient(135deg, #1e293b, #0f172a)" },
+    { id: 2, type: "Agenda / TOC", icon: "📑", desc: "Key Topic Breakdown", bg: "linear-gradient(135deg, #1e3a5f, #0f172a)" },
+    { id: 3, type: "Learning Goals", icon: "🎯", desc: "Core Competencies", bg: "linear-gradient(135deg, #14324f, #0c2035)" },
+    { id: 4, type: "Technical Deep-Dive", icon: "💡", desc: "Architectures & Workflows", bg: "linear-gradient(135deg, #1f2d3d, #111827)" },
+    { id: 5, type: "Interactive Sandbox", icon: "💻", desc: "Code Snippet & Exercises", bg: "linear-gradient(135deg, #182635, #0a101d)" },
+    { id: 6, type: "Speaker Script", icon: "🎙️", desc: "Educator Voiceover Notes", bg: "linear-gradient(135deg, #2a203c, #130f1e)" },
+  ];
+
+  return (
+    <div style={{ padding: '24px 16px', maxWidth: '820px', margin: '0 auto', textAlign: 'center' }}>
+      {/* Top Floating Magic Badge */}
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '8px 22px', background: 'rgba(233, 178, 89, 0.15)', border: '1.5px solid var(--gold)', borderRadius: '30px', marginBottom: '18px', boxShadow: '0 4px 14px rgba(233, 178, 89, 0.25)' }}>
+        <span className="hourglass-animated" style={{ fontSize: '1.25rem' }}>⏳</span>
+        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--navy)', letterSpacing: '0.04em' }}>
+          AI PRESENTATION STUDIO ACTIVE
+        </span>
+        <span className="spin" style={{ display: 'inline-block', fontSize: '0.95rem' }}>✨</span>
+      </div>
+
+      {/* Main Title & Subtitle */}
+      <h2 style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--navy)', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>
+        Generating Your Lesson Slide Deck
+      </h2>
+      <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', maxWidth: '620px', margin: '0 auto 24px auto', lineHeight: 1.5 }}>
+        Creating multi-theme interactive slides and full educator narration notes for: <br />
+        <strong style={{ color: 'var(--navy)', fontWeight: 800 }}>{lessonTitle}</strong>
+      </p>
+
+      {/* Live Animated Progress Bar Card */}
+      <div style={{ background: 'var(--white)', padding: '18px 24px', borderRadius: '16px', border: '1.5px solid var(--border-color)', boxShadow: 'var(--shadow-md)', marginBottom: '24px', textAlign: 'left' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--navy)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="spin">⚡</span> {steps[activeStep]?.title}
+          </span>
+          <span style={{ fontSize: '0.95rem', fontWeight: 900, color: 'var(--blue)' }}>
+            {Math.round(progress)}%
+          </span>
+        </div>
+
+        <div style={{ width: '100%', height: '10px', background: 'var(--surface-3)', borderRadius: '999px', overflow: 'hidden', position: 'relative' }}>
+          <div
+            style={{
+              width: `${progress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, var(--gold) 0%, var(--blue) 50%, #6366f1 100%)',
+              borderRadius: '999px',
+              transition: 'width 0.35s ease',
+              boxShadow: '0 0 12px rgba(99, 102, 241, 0.4)'
+            }}
+          />
+        </div>
+        <div style={{ marginTop: '8px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          {steps[activeStep]?.desc}
+        </div>
+      </div>
+
+      {/* 6 Mini Slide Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
+        {slidePreviews.map((slide, idx) => {
+          const isCompiling = activeStep === Math.min(idx, steps.length - 1);
+          const isDone = activeStep > Math.min(idx, steps.length - 1);
+          return (
+            <div
+              key={slide.id}
+              style={{
+                background: slide.bg,
+                borderRadius: '12px',
+                padding: '14px 16px',
+                textAlign: 'left',
+                color: '#fff',
+                border: isCompiling ? '2px solid var(--gold)' : '1px solid rgba(255,255,255,0.14)',
+                boxShadow: isCompiling ? '0 8px 24px rgba(233, 178, 89, 0.35)' : '0 4px 12px rgba(0,0,0,0.2)',
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'all 0.3s ease',
+                transform: isCompiling ? 'translateY(-2px)' : 'none'
+              }}
+            >
+              {isCompiling && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'var(--gold)' }} />
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>{slide.icon}</span>
+                <span style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: isDone ? 'rgba(34, 197, 94, 0.25)' : isCompiling ? 'rgba(233, 178, 89, 0.3)' : 'rgba(255,255,255,0.1)',
+                  color: isDone ? '#4ade80' : isCompiling ? 'var(--gold)' : 'rgba(255,255,255,0.6)'
+                }}>
+                  {isDone ? '✓ READY' : isCompiling ? '⚡ COMPILING' : `SLIDE 0${slide.id}`}
+                </span>
+              </div>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', marginBottom: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {slide.type}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.3 }}>
+                {slide.desc}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Reassurance Footer Banner */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '12px 20px', background: 'rgba(72, 107, 245, 0.08)', borderRadius: '12px', border: '1px solid rgba(72, 107, 245, 0.2)', fontSize: '0.82rem', color: 'var(--navy)', fontWeight: 600 }}>
+        <span style={{ fontSize: '1.1rem' }}>💡</span>
+        <span>Slides include 3 interchangeable themes: <strong>Corporate Bold</strong>, <strong>Creative Dark</strong>, and <strong>Clean Minimal</strong>.</span>
+      </div>
+    </div>
+  );
+}
 
 export function Step8Generated({
   courseData,
@@ -166,7 +312,11 @@ export function Step8Generated({
                             disabled={pptxLoading}
                             style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: 'var(--navy)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, cursor: pptxLoading ? 'wait' : 'pointer' }}
                           >
-                            {pptxLoading && activePptxLessonId === lesson.id ? '⏳' : '⚡'}
+                            {pptxLoading && activePptxLessonId === lesson.id ? (
+                              <span className="hourglass-animated" style={{ fontSize: '0.85rem' }}>⏳</span>
+                            ) : (
+                              '⚡'
+                            )}
                           </button>
                         )}
                         {hasPptx && (
@@ -192,7 +342,15 @@ export function Step8Generated({
         {/* Right Column: Document Viewer OR PPT Page */}
         {isPptxPage && (
           <div style={{ padding: '24px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', overflow: 'hidden' }}>
-            {!pptxData && activePptxLessonId && (
+            {/* 1. Active PPT Loading Screen */}
+            {pptxLoading && activePptxLessonId && (
+              <SlideGenerationLoader 
+                lessonTitle={courseData.lessons?.find(l => l.id === activePptxLessonId)?.title || 'Selected Lesson'} 
+              />
+            )}
+
+            {/* 2. Ready to Generate (Not Loading, No Data Yet) */}
+            {!pptxData && !pptxLoading && activePptxLessonId && (
               <div style={{ textAlign: 'center', padding: '80px 20px' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📊</div>
                 <h3 style={{ color: 'var(--navy)', marginBottom: '8px' }}>Lesson Slide Generator</h3>
@@ -201,12 +359,14 @@ export function Step8Generated({
                 </p>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.9rem' }}>Click below to generate presentation slides for this lesson.</p>
                 <button onClick={() => handleGenerateLessonPptx(activePptxLessonId)} disabled={pptxLoading}
-                  style={{ padding: '12px 32px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--navy), var(--blue))', color: '#fff', fontSize: '0.95rem', fontWeight: 700, cursor: pptxLoading ? 'wait' : 'pointer', boxShadow: '0 4px 14px rgba(26,32,64,0.3)' }}>
-                  {pptxLoading ? '⏳ Generating...' : '⚡ Generate Slides for This Lesson'}
+                  style={{ padding: '12px 32px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--navy), var(--blue))', color: '#fff', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(26,32,64,0.3)' }}>
+                  ⚡ Generate Slides for This Lesson
                 </button>
               </div>
             )}
-            {!pptxData && !activePptxLessonId && (
+
+            {/* 3. Empty State (No Lesson Selected) */}
+            {!pptxData && !pptxLoading && !activePptxLessonId && (
               <div style={{ textAlign: 'center', padding: '80px 20px' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📊</div>
                 <h3 style={{ color: 'var(--navy)', marginBottom: '8px' }}>Lesson Slide Generator</h3>

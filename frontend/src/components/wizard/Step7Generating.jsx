@@ -312,7 +312,7 @@ export function Step7Generating({
         {/* Patient Reassurance Notice Banner (Simple & Concise Notice) */}
         {generationProgress < 100 && (
           <div style={{ marginTop: '14px', padding: '10px 16px', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.84rem', color: '#92400E', fontWeight: 600 }}>
-            <span style={{ fontSize: '1.05rem' }}>⏳</span>
+            <span className="hourglass-animated" style={{ fontSize: '1.15rem' }}>⏳</span>
             <span>
               <strong>Note:</strong> AI course generation is in progress. Please wait patiently while we build your curriculum.
             </span>
