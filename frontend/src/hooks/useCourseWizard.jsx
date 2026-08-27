@@ -38,6 +38,36 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
   const [techTags, setTechTags] = useState([]);
   const [allSuggestedTags, setAllSuggestedTags] = useState([]);
   const [newTag, setNewTag] = useState('');
+  const [isSyncingContext, setIsSyncingContext] = useState(false);
+
+  const handleSyncContextWithTags = async (customTagsList = null) => {
+    const targetTags = customTagsList || techTags;
+    if (!targetTags || targetTags.length === 0 || !sessionId) return;
+    setIsSyncingContext(true);
+    try {
+      const res = await fetch(`${API_BASE}/courses/sessions/${sessionId}/context/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tech_tags: targetTags,
+          subject_context: subjectContext,
+          difficulty: configDifficulty,
+          target_audience: configAudience
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.subject_context) {
+          setSubjectContext(data.subject_context);
+          if (toast) toast.success('Subject Matter Context updated to match your tags!');
+        }
+      }
+    } catch (err) {
+      console.warn('Sync context warning:', err);
+    } finally {
+      setIsSyncingContext(false);
+    }
+  };
 
   const toggleTag = (tag) => {
     if (techTags.includes(tag)) {
@@ -74,13 +104,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
 
     const formatted = toTitleCase(raw);
     if (formatted) {
-      if (!allSuggestedTags.includes(formatted)) {
-        setAllSuggestedTags(prev => [...prev, formatted]);
-      }
-      if (!techTags.includes(formatted)) {
-        setTechTags(prev => [...prev, formatted]);
-      }
+      const updatedSuggested = allSuggestedTags.includes(formatted) ? allSuggestedTags : [...allSuggestedTags, formatted];
+      const updatedTech = techTags.includes(formatted) ? techTags : [...techTags, formatted];
+      setAllSuggestedTags(updatedSuggested);
+      setTechTags(updatedTech);
       setNewTag('');
+      handleSyncContextWithTags(updatedTech);
     }
   };
 
@@ -610,6 +639,9 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
         setConfigAudience(data.config?.target_audience || 'Student');
         const cleanContext = (data.subject_context || '').replace(/\[(DOMAIN|INTERACTIVITY|TOOLS REQUIRED|FINAL PROJECT|EXPLICIT OUTLINE):[^\]]*\]\n?/gi, '').trim();
         setSubjectContext(cleanContext);
+        setPrerequisites(data.prerequisites || []);
+        setBoundaries(data.out_of_scope || []);
+        setLearningOutcomes(data.learning_outcomes || []);
         const initialConfigHash = JSON.stringify({
           techTags: Array.from(new Set(loadedTech || [])).sort(),
           configDifficulty: data.config?.difficulty || 'Beginner',
@@ -735,7 +767,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
           }),
         });
 
-        if (lastSavedConfigHash !== null && lastSavedConfigHash !== currentConfigHash) {
+        const isConfigChanged = lastSavedConfigHash !== null && lastSavedConfigHash !== currentConfigHash;
+        const isGroundingEmpty = (!prerequisites || prerequisites.length === 0) &&
+                                 (!boundaries || boundaries.length === 0) &&
+                                 (!learningOutcomes || learningOutcomes.length === 0);
+
+        if (isConfigChanged || isGroundingEmpty) {
           const refreshRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/grounding/refresh`, {
             method: 'POST'
           });
@@ -761,6 +798,14 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
 
   const handleSaveGrounding = async () => {
     setIsLoading(true);
+    const currentGroundingHash = JSON.stringify({
+      techTags: Array.from(new Set(techTags || [])).sort(),
+      prerequisites: (prerequisites || []).map(p => (typeof p === 'string' ? p.trim() : p)),
+      boundaries: (boundaries || []).map(b => (typeof b === 'string' ? b.trim() : b)),
+      learningOutcomes: (learningOutcomes || []).map(o => (typeof o === 'string' ? o.trim() : o)),
+    });
+    const isGroundingChanged = lastSavedGroundingHash !== null && lastSavedGroundingHash !== currentGroundingHash;
+
     try {
       if (sessionId) {
         const gRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/grounding`, {
@@ -782,17 +827,21 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
         }
       }
 
-      if (proposals.length === 0 && sessionId) {
+      if ((proposals.length === 0 || isGroundingChanged) && sessionId) {
         const genRes = await fetch(`${API_BASE}/courses/sessions/${sessionId}/proposals/generate`, {
           method: 'POST',
         });
         if (genRes.ok) {
           const genData = await genRes.json();
           setProposals(genData.proposals || []);
+          if (isGroundingChanged) {
+            setSelectedProposalId(null);
+          }
         } else {
           toast.warning('Grounding saved, but failed to generate proposals.');
         }
       }
+      setLastSavedGroundingHash(currentGroundingHash);
       setCurrentStep('proposal');
     } catch (err) {
       console.error('Error saving grounding:', err);
@@ -1179,6 +1228,7 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
     resetWizardState,
     checkCanEdit, handleAIAction, handleSaveManualEdit,
     renderAIActionBar, renderCustomSections,
+    isSyncingContext, handleSyncContextWithTags,
     canJumpFromConfig, canJumpFromGrounding, canJumpFromProposal, canJumpFromStructure,
     fetchSessions
   };

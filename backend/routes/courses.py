@@ -217,6 +217,9 @@ def create_session(input_data: schemas.KeywordInput, db: Session = Depends(get_d
         "prompt": db_session.prompt,
         "tech_tags": json.loads(db_session.tech_tags),
         "all_suggested_tags": all_suggested_tags,
+        "prerequisites": json.loads(db_session.prerequisites) if db_session.prerequisites else [],
+        "out_of_scope": json.loads(db_session.boundaries) if db_session.boundaries else [],
+        "learning_outcomes": json.loads(db_session.learning_outcomes) if db_session.learning_outcomes else [],
         "config": {
             "lessons_count": db_session.config_lessons,
             "duration": db_session.config_duration,
@@ -415,6 +418,39 @@ async def suggest_grounding_item(session_id: str, req: schemas.GroundingSuggestR
         tech_tags=tech_tags
     )
     return {"suggestion": suggestion}
+
+
+@router.post("/sessions/{session_id}/context/sync")
+def sync_context_endpoint(session_id: str, payload: dict, db: Session = Depends(get_db)):
+    db_session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    tech_tags = payload.get("tech_tags", [])
+    if not tech_tags and db_session.tech_tags:
+        try:
+            tech_tags = json.loads(db_session.tech_tags)
+        except Exception:
+            tech_tags = []
+
+    current_ctx = payload.get("subject_context", db_session.subject_context or "")
+    difficulty = payload.get("difficulty", db_session.config_difficulty or "Beginner")
+    audience = payload.get("target_audience", db_session.config_audience or "Student")
+
+    synced_context = pipeline.sync_subject_context_with_tags(
+        keyword=db_session.prompt or "Software Course",
+        current_context=current_ctx,
+        tech_tags=tech_tags,
+        difficulty=difficulty,
+        audience=audience,
+        document_context=db_session.document_context or ""
+    )
+
+    db_session.subject_context = synced_context
+    db_session.tech_tags = json.dumps(tech_tags)
+    db.commit()
+
+    return {"subject_context": synced_context}
 
 
 @router.post("/sessions/{session_id}/config")

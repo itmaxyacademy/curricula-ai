@@ -37,7 +37,9 @@ export function Step2ContextConfig({
   handleJumpToReview,
   canJumpToReview = false,
   handleGenerateProposals,
-  isLoading
+  isLoading,
+  isSyncingContext = false,
+  handleSyncContextWithTags
 }) {
   return (
     <div>
@@ -192,7 +194,38 @@ export function Step2ContextConfig({
 
       {/* Subject Matter Context Card */}
       <div className="prompt-card">
-        <h3 style={{ marginBottom: '14px', fontSize: '1.05rem', color: 'var(--navy)' }}>Subject Matter Context</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--navy)' }}>Subject Matter Context</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Defines pedagogical &amp; technical depth. Auto-updates on adding tags, or click Sync.
+            </p>
+          </div>
+          {techTags && techTags.length > 0 && handleSyncContextWithTags && (
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => handleSyncContextWithTags()}
+              disabled={isSyncingContext || isLoading}
+              style={{
+                fontSize: '0.78rem',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, var(--gold) 0%, #d9a046 100%)',
+                color: '#2d3561',
+                fontWeight: 700,
+                border: 'none',
+                boxShadow: '0 2px 8px rgba(233, 178, 89, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Rewrite and enrich context to thoroughly weave in all selected key topics & tags"
+            >
+              {isSyncingContext ? <><IconSpinner /> Syncing with Tags…</> : <>✨ Sync Context with Tags ({techTags.length})</>}
+            </button>
+          )}
+        </div>
 
         {/* Attached Reference File Badge */}
         {activeFileName && (

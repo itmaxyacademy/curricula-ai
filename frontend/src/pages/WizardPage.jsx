@@ -185,6 +185,8 @@ export function WizardPage({ wizard, exports, currentStep, setCurrentStep, toast
               canJumpToReview={wizard.canJumpFromConfig}
               handleGenerateProposals={wizard.handleGenerateProposals}
               isLoading={wizard.isLoading}
+              isSyncingContext={wizard.isSyncingContext}
+              handleSyncContextWithTags={wizard.handleSyncContextWithTags}
             />
           )}
 

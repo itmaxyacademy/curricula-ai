@@ -354,6 +354,53 @@ def generate_concept_and_grounding(keyword: str, tags: list = None, difficulty: 
             }
         }
 
+def sync_subject_context_with_tags(keyword: str, current_context: str, tech_tags: list, difficulty: str = "Beginner", audience: str = "Student", document_context: str = "") -> str:
+    """Intelligently updates and weaves new tech tags and customized points into the Subject Matter Context."""
+    if not tech_tags:
+        return current_context or ""
+    
+    clean_tags = [to_title_case_en(str(t).strip()) for t in tech_tags if t and str(t).strip()]
+    if not client:
+        tag_list_str = ", ".join(clean_tags)
+        tag_section = f"\n\n### Key Focus Areas & Technologies\nThis course specifically integrates and emphasizes: {tag_list_str}."
+        if "Key Focus Areas & Technologies" in current_context:
+            import re
+            return re.sub(r'### Key Focus Areas & Technologies[\s\S]*?(?=\n\n|$)', f'### Key Focus Areas & Technologies\nThis course specifically integrates and emphasizes: {tag_list_str}.', current_context).strip()
+        return (current_context.strip() + tag_section).strip()
+
+    doc_snippet = f"\n[Reference Document Content]:\n{document_context[:2000]}\n" if document_context else ""
+    prompt = f"""You are a Principal Curriculum Architect and Instructional Designer.
+Update and enrich the following Subject Matter Context for a course so that it thoroughly and seamlessly incorporates all selected Key Topics & Skill Tags, Target Audience, and Difficulty Level.
+
+Course Topic: "{keyword}"
+Difficulty: "{difficulty}" | Target Audience: "{audience}"
+Selected Key Topics & Skill Tags: {json.dumps(clean_tags)}
+Existing Context Draft:
+\"\"\"{current_context}\"\"\"{doc_snippet}
+
+[TASK]
+1. Rewrite/enrich the Subject Matter Context (2-3 detailed paragraphs in Markdown format).
+2. Explicitly incorporate, highlight, and elaborate on the selected Key Topics & Skill Tags ({', '.join(clean_tags)}), explaining how they will be taught and applied in practical scenarios for the target audience.
+3. Keep it 100% professional, concise, authoritative English.
+4. Output ONLY the updated Subject Matter Context markdown text, with no extra conversational filler, no code blocks, no greeting."""
+
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1200,
+            temperature=0.4
+        )
+        res = response.choices[0].message.content.strip()
+        if res.startswith("```") and res.endswith("```"):
+            res = "\n".join(res.split("\n")[1:-1]).strip()
+        return res if res else current_context
+    except Exception as e:
+        print(f"[sync_subject_context_with_tags] Notice: {e}")
+        tag_list_str = ", ".join(clean_tags)
+        return (current_context.strip() + f"\n\n### Key Focus Areas & Technologies\nThis course specifically integrates and emphasizes: {tag_list_str}.").strip()
+
+
 def generate_proposals(keyword: str, grounding_data: dict):
     if not client:
         return MOCK_PROPOSALS
@@ -762,7 +809,7 @@ Return ONLY a valid JSON array of translated strings, e.g. ["Item 1", "Item 2"].
 
 
 def sanitize_custom_structure(structure_list: list) -> list:
-    """Instantly standardizes and formats lesson titles and section structures into Title Case English (0ms latency)."""
+    """Standardizes and formats lesson titles and section structures into Title Case English."""
     if not structure_list or not isinstance(structure_list, list):
         return []
     
@@ -770,7 +817,7 @@ def sanitize_custom_structure(structure_list: list) -> list:
     
     for l in sanitized:
         if "title" in l and l["title"]:
-            l["title"] = to_title_case_en(str(l["title"]))
+            l["title"] = translate_and_standardize_text(str(l["title"]), is_title=True)
         sections = l.get("sections", {})
         if isinstance(sections, dict):
             for role in ["creator", "student", "educator"]:
@@ -779,7 +826,7 @@ def sanitize_custom_structure(structure_list: list) -> list:
                     for s in r_secs:
                         if isinstance(s, dict):
                             if s.get("title"):
-                                s["title"] = to_title_case_en(str(s["title"]))
+                                s["title"] = translate_and_standardize_text(str(s["title"]), is_title=True)
                             if not s.get("instruction"):
                                 s["instruction"] = f"Explore foundational concepts, best practices, and practical workflows for {s.get('title', 'this module')}."
                             if not s.get("type"):
