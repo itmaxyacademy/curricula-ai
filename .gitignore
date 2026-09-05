@@ -60,5 +60,8 @@ graphify-out/
 # OpenCode (local AI agent config)
 .opencode/
 
+# Playwright MCP (working dir: snapshots, console logs, download artifacts)
+.playwright-mcp/
+
 # Local config
 .gitattributes
