@@ -1571,7 +1571,10 @@ def create_pptx_from_structure(slides_json: dict, layout: str = "modern", brand_
         output.seek(0)
         return output
 
-    layout_data = slides_json.get("layouts", {}).get(layout, slides_json.get("layouts", {}).get("modern", {}))
+    if slides_json.get("layouts"):
+        layout_data = slides_json["layouts"].get(layout) or slides_json["layouts"].get("modern") or {}
+    else:
+        layout_data = slides_json
     theme = layout_data.get("theme", {})
     slides_data = layout_data.get("slides", [])
 
