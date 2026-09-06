@@ -67,6 +67,7 @@ def export_course(
                     sections_data[sec.role][sec.section_type] = sec.content_text
             lessons_data.append({
                 "id": lesson.id,
+                "structure_key": lesson.structure_key,  # stable identity string from structure builder (e.g. "1", "L2")
                 "title": lesson.title,
                 "order": lesson.position,
                 "sections": sections_data

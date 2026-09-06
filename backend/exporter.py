@@ -102,12 +102,9 @@ def format_section_content_to_md(content, indent: int = 0) -> list[str]:
         lines.append(f"{pad}{content}")
     return lines
 
-def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
-    sections = (lesson.get("sections") or {}).get(role) or {}
-    if sections and len(sections) > 0:
-        return sections
-        
-    title = clean_lesson_title(lesson.get("title", "Lesson Content"))
+def get_default_role_sections(lesson_title: str, role: str) -> dict:
+    """Returns baseline standard sections for a given role when database records are missing core keys."""
+    title = clean_lesson_title(lesson_title or "Lesson Content")
     if role == "creator":
         return {
             "overview": f"This lesson provides a comprehensive overview and practical foundation for {title}. Students will explore core concepts, industry use-cases, and implementation patterns necessary for real-world projects.",
@@ -118,7 +115,7 @@ def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
             ],
             "core_content": f"### 1. Conceptual Foundations\n{title} serves as a key pillar in modern systems engineering. By leveraging structured workflows and robust error handling, developers can ensure high performance and maintainability.\n\n### 2. Practical Implementation\nTo implement {title} effectively, engineers must follow clean architecture patterns and best practices.",
             "exercises": [
-                {"title": f"Building {title} Pipeline", "description": f"Implement a basic working prototype for {title} using Python/JavaScript.", "code_template": f"// Exercise: {title}\nfunction executeTask() {{\n  console.log('Executing {title}...');\n}}"}
+                {"title": f"Building {title} Pipeline", "instruction": f"Implement a basic working prototype for {title} using Python/JavaScript.", "code_template": f"// Exercise: {title}\nfunction executeTask() {{\n  console.log('Executing {title}...');\n}}"}
             ],
             "quizzes": [
                 {"question": f"What is the primary objective of {title}?", "options": ["To establish a robust, scalable technical workflow", "To bypass data validation", "To reduce readability"], "answer": "To establish a robust, scalable technical workflow", "explanation": "It ensures reliable engineering standards."}
@@ -152,28 +149,24 @@ def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
             ]
         }
 
+
+def get_resolved_lesson_sections(lesson: dict, role: str) -> dict:
+    sections = (lesson.get("sections") or {}).get(role) or {}
+    default_secs = get_default_role_sections(lesson.get("title", ""), role)
+    if not sections:
+        return default_secs
+    
+    # Merge missing default keys into sections
+    merged = dict(sections)
+    for k, v in default_secs.items():
+        if k not in merged:
+            merged[k] = v
+    return merged
+
+
 def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dict) -> list:
     """Returns list of tuples: (clean_title, content_obj, sec_type) in the exact structure order configured by user."""
-    # NOTE: use `or {}` after every .get() here, not just a default arg —
-    # a key that exists but is explicitly None (e.g. {"sections": None})
-    # would otherwise raise AttributeError on the next .get() and silently
-    # kick the whole PDF export into the plain legacy/ReportLab fallback.
-    raw_sections = (lesson.get("sections") or {}).get(role) or {}
-    if not raw_sections:
-        raw_sections = get_resolved_lesson_sections(lesson, role)
-
-    structures = course_data.get("structure") or []
-    lesson_id = lesson.get("id")
-    lesson_title = clean_lesson_title(lesson.get("title", ""))
-    
-    matching_struct = next((
-        s for s in structures 
-        if (lesson_id and s.get("id") == lesson_id) or 
-           (s.get("title") and clean_lesson_title(s.get("title")) == lesson_title) or
-           (s.get("order") and s.get("order") == lesson.get("order"))
-    ), None)
-
-    ordered_defs = ((matching_struct or {}).get("sections") or {}).get(role) or []
+    raw_sections = dict((lesson.get("sections") or {}).get(role) or {})
 
     CANONICAL_LABELS = {
         "overview": "Lesson Overview",
@@ -181,8 +174,11 @@ def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dic
         "outcomes": "Learning Outcomes",
         "core_content": "Core Technical Material",
         "exercises": "Hands-On Exercises",
+        "exercise": "Hands-On Exercises",
         "quizzes": "Assessment Quiz",
         "quiz": "Assessment Quiz",
+        "prompt_templates": "Prompt Templates",
+        "prompt_template": "Prompt Templates",
         "why_this_matters": "Why This Matters",
         "why_matters": "Why This Matters",
         "learning_journey": "Learning Journey",
@@ -202,16 +198,66 @@ def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dic
         "assessment": "Assessment & Homework"
     }
 
+    # Ensure missing standard role sections are filled with resolved fallback content
+    default_role_sections = get_default_role_sections(lesson.get("title", ""), role)
+    for fb_k, fb_v in default_role_sections.items():
+        canonical_label = CANONICAL_LABELS.get(fb_k)
+        alias_keys = {
+            k2 for k2, v2 in CANONICAL_LABELS.items() if v2 == canonical_label
+        } if canonical_label else {fb_k}
+        if not any(ak in raw_sections for ak in alias_keys):
+            raw_sections[fb_k] = fb_v
+
+    structures = course_data.get("structure") or []
+    lesson_id = lesson.get("id")
+    lesson_title = clean_lesson_title(lesson.get("title", ""))
+    
+    matching_struct = next((
+        s for s in structures 
+        if (
+            # Primary: match via structure_key — the stable string identity from the structure
+            # builder (e.g. "1", "L2"). This is the CORRECT identifier to use
+            (lesson.get("structure_key") and str(s.get("id")) == str(lesson.get("structure_key")))
+            # Fallback 1: title match (covers legacy exports without structure_key)
+            or (s.get("title") and clean_lesson_title(s.get("title")) == lesson_title)
+            # Fallback 2: order/position match
+            or (s.get("order") is not None and s.get("order") == lesson.get("order"))
+            # Fallback 3: direct DB id string comparison (very unlikely to match but harmless)
+            or (lesson_id and str(s.get("id")) == str(lesson_id))
+        )
+    ), None)
+
+    ordered_defs = ((matching_struct or {}).get("sections") or {}).get(role) or []
+
+    ROLE_STANDARD_ORDER = {
+        "creator": ["overview", "learning_outcomes", "core_content", "exercises", "exercise", "quizzes", "quiz", "prompt_templates"],
+        "student": ["why_this_matters", "learning_journey", "practice", "debugging", "ethics"],
+        "educator": ["facilitator_guide", "lesson_plan", "rubrics", "rubric", "discussion_questions"]
+    }
+
     result = []
     used_keys = set()
 
+    # 1. First: Add standard sections for this role in canonical pedagogical order
+    std_keys = ROLE_STANDARD_ORDER.get(role, [])
+    for std_k in std_keys:
+        canonical_label = CANONICAL_LABELS.get(std_k)
+        alias_keys = {
+            k2 for k2, v2 in CANONICAL_LABELS.items() if v2 == canonical_label
+        } if canonical_label else {std_k}
+
+        for k, v in raw_sections.items():
+            if k not in used_keys and (k == std_k or k.lower() in alias_keys):
+                used_keys.add(k)
+                title = CANONICAL_LABELS.get(k) or k.replace("custom_", "").replace("_", " ").title()
+                result.append((title, v, k))
+                break
+
+    # 2. Second: Add any custom sections defined in structure builder for this lesson
     if ordered_defs:
         for s_def in ordered_defs:
             if not s_def:
                 continue
-            # A section def missing "type" used to crash with
-            # AttributeError on `.replace(...)` below (None has no
-            # .replace), which silently triggered the ugly fallback PDF.
             s_type = s_def.get("type") or s_def.get("id") or "custom_section"
             s_title = s_def.get("title") or CANONICAL_LABELS.get(s_type) or s_type.replace("custom_", "").replace("_", " ").title()
             
@@ -219,17 +265,25 @@ def get_ordered_sections_with_metadata(lesson: dict, role: str, course_data: dic
             content = raw_sections.get(s_type)
             matched_key = s_type
             if content is None:
+                canonical_label = CANONICAL_LABELS.get(str(s_type).lower())
+                alias_keys = {
+                    k2 for k2, v2 in CANONICAL_LABELS.items() if v2 == canonical_label
+                } if canonical_label else set()
                 for k, v in raw_sections.items():
-                    if k.lower() == str(s_type).lower() or k == s_def.get("id"):
+                    if k not in used_keys and (
+                        k.lower() == str(s_type).lower()
+                        or k == s_def.get("id")
+                        or k.lower() in alias_keys
+                    ):
                         content = v
                         matched_key = k
                         break
             
-            if content is not None:
+            if content is not None and matched_key not in used_keys:
                 used_keys.add(matched_key)
                 result.append((s_title, content, s_type))
 
-    # Add any remaining sections from raw_sections not explicitly in structure
+    # 3. Third: Add any remaining sections from raw_sections not explicitly covered
     for k, v in raw_sections.items():
         if k not in used_keys:
             clean_title = CANONICAL_LABELS.get(k) or k.replace("custom_", "").replace("_", " ").title()
@@ -468,16 +522,48 @@ def _pill(label: str, blue: bool = False) -> str:
     return f"<span class='pill'><span class='{dot_cls}'></span>{html_lib.escape(str(label))}</span>"
 
 
+def _normalize_section_content(content, sec_type: str):
+    """Normalizes section content into appropriate primitive structure (list, dict, str)
+    unwrapping nested dict wrappers like {"quiz": [...]} or JSON string representations."""
+    if content is None:
+        return ""
+
+    if isinstance(content, str):
+        str_c = content.strip()
+        if (str_c.startswith("[") and str_c.endswith("]")) or (str_c.startswith("{") and str_c.endswith("}")):
+            try:
+                content = json.loads(str_c)
+            except Exception:
+                pass
+
+    if isinstance(content, dict):
+        possible_keys = [
+            sec_type, f"{sec_type}s", sec_type.rstrip("s"),
+            "items", "list", "questions", "outcomes", "activities", "exercises", "quizzes", "quiz"
+        ]
+        for k in possible_keys:
+            if k in content and isinstance(content[k], list):
+                return content[k]
+        if len(content) == 1:
+            val = next(iter(content.values()))
+            if isinstance(val, (list, dict, str)):
+                return val
+
+    return content
+
+
 def _render_quiz_card(item: dict) -> str:
-    q = html_lib.escape(str(item.get("question", "")))
+    if not isinstance(item, dict):
+        return f"<div class='card'><div class='card-desc'>{html_lib.escape(str(item))}</div></div>"
+    q = html_lib.escape(str(item.get("question") or item.get("title") or item.get("prompt") or "Question"))
     options = item.get("options", []) or []
-    answer = item.get("answer")
+    answer = item.get("answer") or item.get("correct_answer")
     opts_html = []
     for opt in options:
-        is_correct = (opt == answer)
+        is_correct = (str(opt).strip().lower() == str(answer).strip().lower()) if answer else False
         cls = "quiz-opt correct" if is_correct else "quiz-opt"
         opts_html.append(f"<div class='{cls}'><div class='radio'></div>{html_lib.escape(str(opt))}</div>")
-    why = item.get("explanation", "")
+    why = item.get("explanation") or item.get("rationale") or item.get("reason")
     why_html = f"<div class='quiz-why'>Why: {html_lib.escape(str(why))}</div>" if why else ""
     return (
         "<div class='card'>"
@@ -489,11 +575,13 @@ def _render_quiz_card(item: dict) -> str:
 
 
 def _render_exercise_card(item: dict) -> str:
-    title = html_lib.escape(str(item.get("title") or item.get("name") or "Exercise"))
-    desc = html_lib.escape(str(item.get("description", "")))
+    if not isinstance(item, dict):
+        return f"<div class='card'><div class='card-desc'>{html_lib.escape(str(item))}</div></div>"
+    title = html_lib.escape(str(item.get("title") or item.get("name") or item.get("heading") or "Exercise"))
+    desc = html_lib.escape(str(item.get("instruction") or item.get("description") or item.get("details") or ""))
     difficulty = str(item.get("difficulty", "")).lower()
     badge_html = f"<span class='badge {difficulty}'>{html_lib.escape(difficulty)}</span>" if difficulty in ("easy", "medium", "hard") else ""
-    code = item.get("code_template") or item.get("starter_code")
+    code = item.get("code_template") or item.get("starter_code") or item.get("code")
     code_html = f"<div class='codeblock'>{html_lib.escape(str(code))}</div>" if code else ""
     return (
         "<div class='card'>"
@@ -520,6 +608,7 @@ def _render_rubric_table(rubric: list) -> str:
 
 def _render_section(section_type: str, content, custom_title: str = None) -> str:
     """Renders one lesson section into styled HTML with custom title and clean typography."""
+    content = _normalize_section_content(content, section_type)
     label = custom_title or section_type.replace("custom_", "").replace("_", " ").title()
     out = [f"<div class='md-h3' style='font-size:15px;margin-top:20px;'>{html_lib.escape(label)}</div>"]
 
@@ -529,10 +618,10 @@ def _render_section(section_type: str, content, custom_title: str = None) -> str
             for c in content
         )
         out.append(f"<div class='check-list'>{items}</div>")
-    elif section_type == "exercises" and isinstance(content, list):
+    elif section_type in ("exercises", "exercise") and isinstance(content, list):
         out.extend(_render_exercise_card(item) if isinstance(item, dict) else f"<div class='card'><div class='card-desc'>{html_lib.escape(str(item))}</div></div>" for item in content)
     elif section_type in ("quizzes", "quiz") and isinstance(content, list):
-        out.extend(_render_quiz_card(item) if isinstance(item, dict) else "" for item in content)
+        out.extend(_render_quiz_card(item) if isinstance(item, dict) else f"<div class='card'><div class='card-desc'>{html_lib.escape(str(item))}</div></div>" for item in content)
     elif section_type in ("rubric", "rubrics") and isinstance(content, list):
         out.append(_render_rubric_table(content))
     elif section_type in ("discussion_questions", "discussion") and isinstance(content, list):
@@ -552,20 +641,70 @@ def _render_section(section_type: str, content, custom_title: str = None) -> str
             )
             out.append(f"<div class='check-list'>{items}</div>")
     elif section_type in ("lesson_plan", "engagement") and isinstance(content, dict):
+        # lesson_plan can contain string values (e.g. "ice_breaker", "timing")
+        # or a list of activities dicts (e.g. "activities": [{"name":"Lecture", "duration_mins":15}])
         for k, v in content.items():
-            out.append(f"<p class='md-p'><b>{html_lib.escape(k.replace('_',' ').title())}:</b> {html_lib.escape(str(v))}</p>")
+            k_label = html_lib.escape(k.replace('_', ' ').title())
+            if isinstance(v, str):
+                out.append(f"<p class='md-p'><b>{k_label}:</b> {html_lib.escape(v)}</p>")
+            elif isinstance(v, list):
+                out.append(f"<p class='md-p'><b>{k_label}:</b></p>")
+                li_parts = []
+                for act in v:
+                    if isinstance(act, dict):
+                        row = " &mdash; ".join(
+                            f"<b>{html_lib.escape(str(ak).replace('_',' ').title())}:</b> {html_lib.escape(str(av))}"
+                            for ak, av in act.items()
+                        )
+                        li_parts.append(f"<li>{row}</li>")
+                    else:
+                        li_parts.append(f"<li>{html_lib.escape(str(act))}</li>")
+                out.append(f"<ul class='md-ul'>{''.join(li_parts)}</ul>")
+            elif isinstance(v, dict):
+                out.append(f"<p class='md-p'><b>{k_label}:</b></p>")
+                for ik, iv in v.items():
+                    out.append(f"<p class='md-p' style='margin-left:14px;'><b>{html_lib.escape(ik.replace('_',' ').title())}:</b> {html_lib.escape(str(iv))}</p>")
+            else:
+                out.append(f"<p class='md-p'><b>{k_label}:</b> {html_lib.escape(str(v))}</p>")
     elif isinstance(content, str):
         clean_text = content
         if custom_title:
             clean_text = re.sub(r'^#{1,6}\s*' + re.escape(custom_title) + r'\s*\n*', '', clean_text, flags=re.IGNORECASE).strip()
         out.append(_md_block_to_html(clean_text))
     elif isinstance(content, list):
-        items = "".join(f"<li>{html_lib.escape(str(c)) if not isinstance(c, dict) else html_lib.escape(json.dumps(c))}</li>" for c in content)
-        out.append(f"<ul class='md-ul'>{items}</ul>")
+        # Generic list — render dicts as structured bullets, strings as plain bullets
+        ul_items = []
+        for c in content:
+            if isinstance(c, dict):
+                parts = []
+                for ik, iv in c.items():
+                    if isinstance(iv, (str, int, float)):
+                        parts.append(f"<b>{html_lib.escape(str(ik).replace('_',' ').title())}:</b> {html_lib.escape(str(iv))}")
+                    elif isinstance(iv, list):
+                        parts.append(f"<b>{html_lib.escape(str(ik).replace('_',' ').title())}:</b> {html_lib.escape(', '.join(str(x) for x in iv))}")
+                ul_items.append("<li>" + (" &mdash; ".join(parts) if parts else html_lib.escape(json.dumps(c))) + "</li>")
+            else:
+                ul_items.append(f"<li>{html_lib.escape(str(c))}</li>")
+        out.append(f"<ul class='md-ul'>{''.join(ul_items)}</ul>")
     elif isinstance(content, dict):
+        # Generic dict — render all key-value pairs, including nested lists and dicts
         for k, v in content.items():
-            if isinstance(v, (str, int, float)):
-                out.append(f"<p class='md-p'><b>{html_lib.escape(k.replace('_',' ').title())}:</b> {html_lib.escape(str(v))}</p>")
+            k_label = html_lib.escape(k.replace('_', ' ').title())
+            if isinstance(v, str):
+                out.append(f"<p class='md-p'><b>{k_label}:</b> {_md_block_to_html(v)}</p>")
+            elif isinstance(v, (int, float)):
+                out.append(f"<p class='md-p'><b>{k_label}:</b> {html_lib.escape(str(v))}</p>")
+            elif isinstance(v, list):
+                out.append(f"<p class='md-p'><b>{k_label}:</b></p>")
+                li_items = "".join(
+                    f"<li>{html_lib.escape(str(item)) if not isinstance(item, dict) else ' &mdash; '.join(f'<b>{html_lib.escape(str(ik).replace(chr(95), chr(32)).title())}:</b> {html_lib.escape(str(iv))}' for ik, iv in item.items() if isinstance(iv, (str, int, float)))}</li>"
+                    for item in v
+                )
+                out.append(f"<ul class='md-ul'>{li_items}</ul>")
+            elif isinstance(v, dict):
+                out.append(f"<p class='md-p'><b>{k_label}:</b></p>")
+                for ik, iv in v.items():
+                    out.append(f"<p class='md-p' style='margin-left:14px;'><b>{html_lib.escape(ik.replace('_',' ').title())}:</b> {html_lib.escape(str(iv))}</p>")
     return "\n".join(out)
 
 
@@ -1353,8 +1492,9 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
                 story.append(Spacer(1, 10))
 
                 ordered_secs = get_ordered_sections_with_metadata(lesson, r_item, course_data)
-                for s_title, content, sec_type in ordered_secs:
+                for s_title, raw_content, sec_type in ordered_secs:
                     card_elems = []
+                    content = _normalize_section_content(raw_content, sec_type)
                     # Theme determination
                     if sec_type in ("why_this_matters", "why_matters"):
                         bg_c, border_c, t_c, icon = '#EFF6FF', '#3B82F6', '#1D4ED8', '💡'
@@ -1362,7 +1502,7 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
                         bg_c, border_c, t_c, icon = '#F0FDFA', '#0D9488', '#0F766E', '🧭'
                     elif sec_type in ("learning_outcomes", "outcomes"):
                         bg_c, border_c, t_c, icon = '#F8FAFC', '#0284C7', '#0369A1', '🎯'
-                    elif sec_type in ("practice", "exercises"):
+                    elif sec_type in ("practice", "exercises", "exercise"):
                         bg_c, border_c, t_c, icon = '#F8FAFC', '#6366F1', '#4338CA', '📋'
                     elif sec_type in ("debugging",):
                         bg_c, border_c, t_c, icon = '#FFFBEB', '#F59E0B', '#B45309', '⚠️'
@@ -1380,24 +1520,32 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
                         if sec_type in ("learning_outcomes", "outcomes"):
                             for item in content:
                                 card_elems.append(Paragraph(f"<font color='#16A34A'><b>[&#10003;]</b></font>&nbsp;&nbsp;{md_to_reportlab_html(clean_rl_text(str(item)))}", bullet_item_style))
-                        elif sec_type == "exercises":
+                        elif sec_type in ("exercises", "exercise"):
                             for e_idx, ex in enumerate(content):
                                 if isinstance(ex, dict):
-                                    card_elems.append(Paragraph(f"<b>Exercise {e_idx + 1}: {clean_rl_text(ex.get('title', 'Task'))}</b>", card_subhead_style))
-                                    if ex.get('description'):
-                                        card_elems.append(Paragraph(md_to_reportlab_html(clean_rl_text(ex['description'])), body_p_style))
-                                    if ex.get('code_template'):
-                                        card_elems.extend(parse_markdown_to_elements(f"```\n{ex['code_template']}\n```"))
+                                    ex_title = clean_rl_text(ex.get('title') or ex.get('name') or f'Task {e_idx + 1}')
+                                    card_elems.append(Paragraph(f"<b>Exercise {e_idx + 1}: {ex_title}</b>", card_subhead_style))
+                                    ex_desc = ex.get('instruction') or ex.get('description') or ex.get('details')
+                                    if ex_desc:
+                                        card_elems.append(Paragraph(md_to_reportlab_html(clean_rl_text(ex_desc)), body_p_style))
+                                    ex_code = ex.get('code_template') or ex.get('starter_code') or ex.get('code')
+                                    if ex_code:
+                                        card_elems.extend(parse_markdown_to_elements(f"```\n{ex_code}\n```"))
                                 else:
                                     card_elems.append(Paragraph(md_to_reportlab_html(clean_rl_text(str(ex))), body_p_style))
                         elif sec_type in ("quizzes", "quiz"):
                             for q_idx, q in enumerate(content):
                                 if isinstance(q, dict):
-                                    card_elems.append(Paragraph(f"<b>Q{q_idx + 1}: {clean_rl_text(q.get('question', 'Question'))}</b>", card_subhead_style))
+                                    q_text = clean_rl_text(q.get('question') or q.get('title') or q.get('prompt') or f'Question {q_idx + 1}')
+                                    card_elems.append(Paragraph(f"<b>Q{q_idx + 1}: {q_text}</b>", card_subhead_style))
+                                    ans = q.get('answer') or q.get('correct_answer')
                                     for opt in q.get('options', []):
-                                        is_ans = opt == q.get('answer')
+                                        is_ans = (str(opt).strip().lower() == str(ans).strip().lower()) if ans else False
                                         icon_opt = "<font color='#16A34A'><b>[&#10003;]</b></font>" if is_ans else "[ &nbsp; ]"
                                         card_elems.append(Paragraph(f"{icon_opt}&nbsp;&nbsp;{clean_rl_text(str(opt))}", bullet_item_style))
+                                    why = q.get('explanation') or q.get('rationale') or q.get('reason')
+                                    if why:
+                                        card_elems.append(Paragraph(f"<i>Explanation: {clean_rl_text(why)}</i>", body_p_style))
                         elif sec_type in ("rubric", "rubrics"):
                             r_rows = [[
                                 Paragraph("<b>Criteria</b>", ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=9, textColor=colors.HexColor('#FFFFFF'))),
@@ -1435,7 +1583,25 @@ def export_to_pdf(course_data: dict, role: str) -> io.BytesIO:
                                     card_elems.append(Paragraph(f"<font color='#16A34A'><b>[&#10003;]</b></font>&nbsp;&nbsp;{md_to_reportlab_html(clean_rl_text(str(chk)))}", bullet_item_style))
                         else:
                             for k, v in content.items():
-                                card_elems.append(Paragraph(f"<b>{clean_rl_text(k.replace('_', ' ').title())}:</b> {md_to_reportlab_html(clean_rl_text(str(v)))}", body_p_style))
+                                k_label = clean_rl_text(k.replace('_', ' ').title())
+                                if isinstance(v, (str, int, float)):
+                                    card_elems.append(Paragraph(f"<b>{k_label}:</b> {md_to_reportlab_html(clean_rl_text(str(v)))}", body_p_style))
+                                elif isinstance(v, list):
+                                    card_elems.append(Paragraph(f"<b>{k_label}:</b>", body_p_style))
+                                    for sub_item in v:
+                                        if isinstance(sub_item, dict):
+                                            row_text = " &mdash; ".join(
+                                                f"<b>{clean_rl_text(str(sk).replace('_',' ').title())}:</b> {md_to_reportlab_html(clean_rl_text(str(sv)))}"
+                                                for sk, sv in sub_item.items()
+                                                if isinstance(sv, (str, int, float))
+                                            )
+                                            card_elems.append(Paragraph(f"&bull;&nbsp;{row_text}", bullet_item_style))
+                                        else:
+                                            card_elems.append(Paragraph(f"&bull;&nbsp;{md_to_reportlab_html(clean_rl_text(str(sub_item)))}", bullet_item_style))
+                                elif isinstance(v, dict):
+                                    card_elems.append(Paragraph(f"<b>{k_label}:</b>", body_p_style))
+                                    for sk, sv in v.items():
+                                        card_elems.append(Paragraph(f"&nbsp;&nbsp;&bull;&nbsp;{clean_rl_text(sk.replace('_',' ').title())}: {md_to_reportlab_html(clean_rl_text(str(sv)))}", bullet_item_style))
                     else:
                         # String markdown content
                         card_elems.extend(parse_markdown_to_elements(str(content)))

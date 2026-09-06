@@ -461,11 +461,24 @@ async def validate_and_ensure_complete_content(session_id: str, db):
         sections_dict = matching_outline.get("sections", {}) if isinstance(matching_outline, dict) else {}
 
         for role_name in ["creator", "student", "educator"]:
-            role_sects = sections_dict.get(role_name, []) if isinstance(sections_dict, dict) else []
-            unlocked_sects = [s for s in role_sects if isinstance(s, dict) and not s.get("locked", False)]
+            sections_to_check = []
+            if role_name == "creator":
+                sections_to_check = ["overview", "learning_outcomes", "core_content", "exercises", "quizzes"]
+            elif role_name == "student":
+                sections_to_check = ["why_this_matters", "learning_journey", "practice", "debugging", "ethics"]
+            else: # educator
+                sections_to_check = ["facilitator_guide", "lesson_plan", "rubric", "discussion_questions"]
 
-            for s in unlocked_sects:
-                sec_type = s.get("type") or re.sub(r'[^a-z0-9_]', '_', s.get("title", "custom").lower()).strip('_')
+            role_sects = sections_dict.get(role_name, []) if isinstance(sections_dict, dict) else []
+            for s in role_sects:
+                if isinstance(s, dict) and not s.get("locked", False):
+                    st = s.get("type") or re.sub(r'[^a-z0-9_]', '_', s.get("title", "custom").lower()).strip('_')
+                    if st not in sections_to_check:
+                        sections_to_check.append(st)
+
+            fallback_dict = exporter.get_resolved_lesson_sections({"title": lesson.title}, role_name)
+
+            for sec_type in sections_to_check:
                 existing_sec = db.query(Section).filter(
                     Section.lesson_id == lesson.id,
                     Section.role == role_name,
@@ -480,7 +493,7 @@ async def validate_and_ensure_complete_content(session_id: str, db):
                         raw_content = existing_sec.content_text
 
                 if not raw_content or str(raw_content).strip() in ["", "No content available.", "null", "None"]:
-                    generated_val = await pipeline.generate_single_custom_section(lesson.title, s, grounding_data)
+                    generated_val = fallback_dict.get(sec_type) or f"### {sec_type.replace('_',' ').title()}\nDetailed content for {sec_type} in {lesson.title}."
                     if existing_sec:
                         existing_sec.content_text = json.dumps(generated_val)
                     else:
