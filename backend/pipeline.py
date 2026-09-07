@@ -1318,7 +1318,7 @@ async def generate_custom_section_content(lesson_title: str, section_title: str,
         return f"Content for '{section_title}' could not be generated. Instruction: {instruction}."
 
 
-def _section_text_for_prompt(content, max_chars: int = 1500) -> str:
+def _section_text_for_prompt(content, max_chars: int = 2500) -> str:
     """Render a section's raw content (str/list/dict) into compact readable text,
     reusing the same renderer the working PDF/DOCX exports use, so the PPTX
     prompt sees exactly the same material as the other role-filtered exports."""
@@ -1362,10 +1362,14 @@ ROLE_DECK_FRAMING = {
 
 
 async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, role: str = "student") -> dict:
-    """Generate PPT slide structure with 3 layouts using AI, scoped to a single
-    role's material (student/educator/creator/all) — mirroring the role-aware
+    """Generate a complete PPT slide deck using AI, scoped to a single role's
+    material (student/educator/creator/all) — mirroring the role-aware
     PDF/DOCX exports so the deck only contains content appropriate for that
-    audience (e.g. actual learning material for students, not teacher notes)."""
+    audience (e.g. actual learning material for students, not teacher notes).
+    Uses the RCTF-A framework (Role/Context/Task/Format/Audience) in the prompt
+    and generates ONE comprehensive deck (no slide cap); layout_1/2/3 are then
+    produced by cloning the slides with distinct themes, so the token budget
+    goes into content depth instead of 3 identical copies."""
     role = (role or "student").lower()
     if role not in ROLE_DECK_FRAMING:
         role = "student"
@@ -1394,26 +1398,24 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, 
     deck_framing = ROLE_DECK_FRAMING[role]
 
     prompt = f"""
-    [ROLE]
-    You are a Master Educator, Keynote Speaker, and Instructional Designer creating a world-class, highly engaging presentation slide deck with comprehensive educator narration scripts.
+    This prompt is structured using the RCTF-A framework: Role, Context, Task, Format, Audience & Constraints. Follow every element strictly so the output is specific, complete, and non-generic.
 
-    [AUDIENCE / DECK PURPOSE — CRITICAL]
-    {deck_framing}
-    All slide content (titles, bullets, code, notes) must be built strictly from the [LESSON DATA] below, which already contains only this audience's material — do not pull in or fabricate content outside of it.
+    [R - ROLE]
+    You are a Master Educator, Keynote Speaker, and Instructional Designer creating a world-class, highly engaging, and COMPLETE presentation slide deck with comprehensive educator narration scripts. Act like the world's best teacher preparing a flagship lecture deck.
 
-    [TASK]
-    Create a complete, high-impact, professional slide deck for the course "{course_data.get('title', 'Untitled Course')}".
+    [C - CONTEXT]
+    You are building the deck for the course "{course_data.get('title', 'Untitled Course')}".
     Difficulty: {course_data.get('config', {}).get('difficulty', 'Beginner')}
     Audience: {course_data.get('config', {}).get('target_audience', 'Student')}
     Number of Lessons: {len(lessons_summary)}
     {colors_hint}
+    {deck_framing}
+    All slide content (titles, bullets, code, notes) must be built strictly from the [LESSON DATA] below, which already contains only this audience's material — do not pull in or fabricate content outside of it.
 
-    Generate 3 different layout versions simultaneously: "layout_1", "layout_2", and "layout_3".
-    Each layout must have the SAME rich slide content and speaker notes, but visually distinct styling.
+    [T - TASK]
+    Create a complete, exhaustive, high-impact, professional slide deck that covers EVERY lesson topic and EVERY section listed in [LESSON DATA]. There is NO maximum number of slides: if a section has a lot of material, split it across MULTIPLE slides instead of cramming it together. More material = more slides. Do not abbreviate, truncate, or skip anything.
 
     [SLIDE STRUCTURE]
-    Generate a thorough, complete slide deck covering all lesson topics and sections listed in [LESSON DATA]:
-
     1. TITLE SLIDE (first slide):
        - title: Course title
        - subtitle: ""
@@ -1423,13 +1425,14 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, 
        - Numbered list of all lessons
        - notes: Narrative overview walking through the learning roadmap and how each module builds upon the previous.
 
-    3. FOR EACH LESSON, generate comprehensive slides covering all of its listed sections:
+    3. FOR EACH LESSON, generate comprehensive slides covering ALL of its listed sections:
        a. LESSON TITLE slide — title MUST be exactly "Lesson {{N}}: {{the lesson's title field, verbatim}}" — the title field in [LESSON DATA] is already the clean lesson name with NO "Lesson N:" prefix, so do not duplicate or reword it, just prepend the number once.
-       b. For EACH section provided for this lesson in [LESSON DATA] (in the given order), produce one or more CONTENT slides:
-          - Turn the section's content into 3-6 clear, informative bullet points (or a "code" slide if the section is a code example/practical walkthrough)
+       b. For EACH section provided for this lesson in [LESSON DATA] (in the given order), produce one or more CONTENT slides (or one or more CODE slides if the section is a code example/practical walkthrough):
+          - Turn the section's content into 3-6 clear, informative bullet points per slide (or code slides)
           - Each bullet must be a complete, informative statement a learner could actually study from — not a vague label
-          - Split a section across multiple slides if it has a lot of material (max 6 bullets per slide)
-          - Use the section_title as the basis for the slide title
+          - Split large sections across multiple slides: max 6 bullets per slide, max 1 code example per code slide, use additional slides for extra depth
+          - Use the section_title as the basis for the slide title; add descriptive suffixes (": Concepts", ": Examples", ": Common Pitfalls", ": Practice") when splitting a section into several slides
+          - Prefer producing MORE slides over fewer, denser ones
 
     4. END SLIDE:
        - title: "Thank You / Terima Kasih"
@@ -1445,10 +1448,10 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, 
     - Automatically match the language of the provided course content and lesson titles. If the course is in Indonesian, write all slide titles, bullets, and speaker notes in Indonesian. If in English, write in English.
 
     [LESSON DATA]
-    {json.dumps(lessons_summary, ensure_ascii=False)[:14000]}
+    {json.dumps(lessons_summary, ensure_ascii=False)[:30000]}
 
-    [FORMAT]
-    Return a pure JSON object with exactly this structure:
+    [F - FORMAT]
+    Return ONE single "layout_1" set only — a pure JSON object with exactly this structure (NOT three layouts):
     {{
       "layouts": {{
         "layout_1": {{
@@ -1461,24 +1464,19 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, 
             {{"type": "code", "title": "...", "code": "// code here", "language": "python", "notes": "..."}},
             {{"type": "end", "title": "Thank You", "subtitle": "...", "notes": "..."}}
           ]
-        }},
-        "layout_2": {{
-          "theme": {{"primary": "#0f172a", "secondary": "#ffffff", "accent": "#0284c7", "text": "#ffffff"}},
-          "slides": [...same slides, same content and notes...]
-        }},
-        "layout_3": {{
-          "theme": {{"primary": "#ffffff", "secondary": "#1e293b", "accent": "#0d9488", "text": "#1e293b"}},
-          "slides": [...same slides, same content and notes...]
         }}
       }}
     }}
-    - Every slide MUST have a "notes" field with detailed speaker notes (2-4 sentences).
-    - All 3 layouts must have the SAME number of slides and SAME content.
-    - Slide types: "title", "toc", "lesson_title", "content", "code", "end"
-    - Max 6 bullets per content slide. Split into multiple slides if needed.
-    - Title slide subtitle MUST be empty string "".
+
+    [A - AUDIENCE & CONSTRAINTS]
+    - Audience: {course_data.get('config', {}).get('target_audience', 'Student')} — tailor depth, examples, and narration tone to them.
+    - Every slide MUST have a "notes" field with detailed speaker notes (4-8 sentences).
+    - Slide types allowed: "title", "toc", "lesson_title", "content", "code", "end".
+    - Max 6 bullets per content slide. Split into additional slides when a section needs more.
+    - Title slide subtitle MUST be an empty string "".
+    - DO NOT generate "layout_2" or "layout_3" — only "layout_1".
     - Return pure JSON only, no preamble.
-    - Do NOT truncate or abbreviate — provide complete, comprehensive content.
+    - Do NOT truncate or abbreviate — provide complete, comprehensive content even if it spans many slides.
     """
 
     try:
@@ -1496,9 +1494,23 @@ async def generate_pptx_structure(course_data: dict, brand_colors: dict = None, 
         data = safe_load_json(response.choices[0].message.content)
         if "layouts" not in data:
             data = {"layouts": data}
+        layouts = data["layouts"]
+        # Find the first complete layout (prefer layout_1) to use as the slide source.
+        src = None
+        for k in ["layout_1", "layout_2", "layout_3"]:
+            if layouts.get(k) and layouts[k].get("slides"):
+                src = layouts[k]
+                break
         for layout_name in ["layout_1", "layout_2", "layout_3"]:
-            if layout_name not in data["layouts"]:
-                data["layouts"][layout_name] = _mock_pptx_layout(course_data, layout_name, role)
+            has_slides = layouts.get(layout_name) and layouts[layout_name].get("slides")
+            if not has_slides:
+                if src is not None:
+                    layouts[layout_name] = {
+                        "theme": _pptx_theme(layout_name),
+                        "slides": [dict(s) for s in src["slides"]]
+                    }
+                else:
+                    layouts[layout_name] = _mock_pptx_layout(course_data, layout_name, role)
         return data
     except Exception as e:
         print(f"Error generating PPTX structure: {e}")
@@ -1522,6 +1534,15 @@ def _text_to_bullets(text: str, max_bullets: int = 5, min_len: int = 6) -> list:
     if not bullets and text.strip():
         bullets = [text.strip()[:220]]
     return bullets
+
+
+def _pptx_theme(layout_name: str) -> dict:
+    themes = {
+        "layout_1": {"primary": "#1a202c", "secondary": "#ffffff", "accent": "#d69e2e", "text": "#ffffff"},
+        "layout_2": {"primary": "#0f172a", "secondary": "#ffffff", "accent": "#0284c7", "text": "#ffffff"},
+        "layout_3": {"primary": "#ffffff", "secondary": "#1e293b", "accent": "#0d9488", "text": "#1e293b"}
+    }
+    return themes.get(layout_name, themes["layout_1"])
 
 
 def _mock_pptx_layout(course_data: dict, layout_name: str, role: str = "student") -> dict:
