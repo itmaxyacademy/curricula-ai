@@ -821,9 +821,9 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
         });
         if (gRes.ok) {
           const gData = await gRes.json();
-          if (gData.prerequisites) setPrerequisites(gData.prerequisites);
-          if (gData.out_of_scope) setBoundaries(gData.out_of_scope);
-          if (gData.learning_outcomes) setLearningOutcomes(gData.learning_outcomes);
+          if (Array.isArray(gData.prerequisites) && gData.prerequisites.length > 0) setPrerequisites(gData.prerequisites);
+          if (Array.isArray(gData.out_of_scope) && gData.out_of_scope.length > 0) setBoundaries(gData.out_of_scope);
+          if (Array.isArray(gData.learning_outcomes) && gData.learning_outcomes.length > 0) setLearningOutcomes(gData.learning_outcomes);
         }
       }
 
@@ -1003,12 +1003,12 @@ export function useCourseWizard({ toast, setCurrentView, currentView, currentSte
           setPptxDataByLesson.current(data.pptx_by_lesson);
         }
         setLastSavedConfigHash(JSON.stringify({
-          techTags: loadedTech,
+          techTags: Array.from(new Set(loadedTech || [])).sort(),
           configDifficulty: data.config?.difficulty || 'Beginner',
           configAudience: data.config?.target_audience || 'Student',
           configLessons: data.config?.lessons_count || 5,
           configDuration: data.config?.duration || 60,
-          subjectContext: data.subject_context || '',
+          subjectContext: (data.subject_context || '').trim().replace(/\s+/g, ' '),
         }));
 
         if (data.status === 'completed' && data.lessons?.length > 0) {

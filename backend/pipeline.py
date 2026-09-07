@@ -797,11 +797,11 @@ Return ONLY a valid JSON array of translated strings, e.g. ["Item 1", "Item 2"].
             temperature=0.2
         )
         parsed = safe_load_json(response.choices[0].message.content)
-        if isinstance(parsed, list):
+        if isinstance(parsed, list) and len(parsed) > 0:
             return parsed
         if isinstance(parsed, dict):
             for v in parsed.values():
-                if isinstance(v, list):
+                if isinstance(v, list) and len(v) > 0:
                     return v
         return [to_title_case_en(x) if is_title else x for x in valid_items]
     except Exception:
